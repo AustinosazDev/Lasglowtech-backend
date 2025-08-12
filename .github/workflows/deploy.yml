@@ -1,0 +1,25 @@
+on:
+  push:
+    branches:
+      - main
+
+name: 🚀 Deploy Node.js backend to cPanel
+
+jobs:
+  deploy:
+    name: 🎉 FTP Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚚 Checkout Code
+        uses: actions/checkout@v3
+
+      - name: 🚀 Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.MYSECRETPASSWORD }}
+          protocol: ${{ secrets.FTP_PROTOCOL }}
+          port: ${{ secrets.FTP_PORT }}
+          server-dir: ./ 
+          dangerous-clean-slate: true
