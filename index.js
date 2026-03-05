@@ -117,11 +117,15 @@ app.get('/api/health', (req, res) => {
 // 9️⃣ Start the servers
 ensureTables()
   .then(() => {
-    app.listen(port, () => {
-      console.log(`Server listening on port ${port} (dev: ${isDev})`);
-    });
+    console.log('Database tables ensured!');
   })
   .catch((error) => {
     console.error('Bootstrap failed:', error.message);
-    process.exit(1);
+    // Do NOT exit, just continue
+  })
+  .finally(() => {
+    // Start the server no matter what
+    app.listen(port, () => {
+      console.log(`Server listening on port ${port} (dev: ${isDev})`);
+    });
   });

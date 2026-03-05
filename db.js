@@ -15,6 +15,8 @@ const pool = mysql.createPool({
   // connectionLimit: 10, 
   // queueLimit: 0,
 
+  
+
   host: config.database_host,
   user: config.database_user,
   password: config.database_password,
