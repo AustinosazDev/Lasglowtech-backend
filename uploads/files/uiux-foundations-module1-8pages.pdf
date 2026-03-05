@@ -1,0 +1,317 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Length 440 >>
+stream
+BT
+/F1 18 Tf
+72 780 Td
+24 TL
+(UI/UX Foundations - Page 1) Tj
+/F1 12 Tf
+T*
+() Tj
+T*
+(Course: UI/UX Design Masterclass) Tj
+T*
+(Module: UI/UX Foundations and Design Process) Tj
+T*
+(Learning goal: Understand core UX principles and workflow.) Tj
+T*
+() Tj
+T*
+(Topics:) Tj
+T*
+(- Difference between UI and UX) Tj
+T*
+(- Product thinking and user-centered design) Tj
+T*
+(- End-to-end design lifecycle overview) Tj
+T*
+(- Roles in a product team) Tj
+ET
+endstream
+endobj
+3 0 obj
+<< /Type /Page /Parent 18 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+4 0 obj
+<< /Length 384 >>
+stream
+BT
+/F1 18 Tf
+72 780 Td
+24 TL
+(Page 2 - Problem Framing) Tj
+/F1 12 Tf
+T*
+() Tj
+T*
+(Before design starts, frame the problem clearly.) Tj
+T*
+() Tj
+T*
+(Checklist:) Tj
+T*
+(- What user pain are we solving?) Tj
+T*
+(- Who are the primary users?) Tj
+T*
+(- What business outcome is expected?) Tj
+T*
+(- What assumptions need validation?) Tj
+T*
+() Tj
+T*
+(Output: concise problem statement.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 18 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 340 >>
+stream
+BT
+/F1 18 Tf
+72 780 Td
+24 TL
+(Page 3 - Research Basics) Tj
+/F1 12 Tf
+T*
+() Tj
+T*
+(Research gives design decisions context.) Tj
+T*
+() Tj
+T*
+(Methods:) Tj
+T*
+(- User interviews) Tj
+T*
+(- Competitor review) Tj
+T*
+(- Analytics review) Tj
+T*
+(- Existing support ticket analysis) Tj
+T*
+() Tj
+T*
+(Output: key insights and opportunity areas.) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 18 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 376 >>
+stream
+BT
+/F1 18 Tf
+72 780 Td
+24 TL
+(Page 4 - Personas and Journeys) Tj
+/F1 12 Tf
+T*
+() Tj
+T*
+(Translate research into practical design tools.) Tj
+T*
+() Tj
+T*
+(Deliverables:) Tj
+T*
+(- Lightweight persona profile) Tj
+T*
+(- User journey map) Tj
+T*
+(- Friction point identification) Tj
+T*
+(- Priority experience goals) Tj
+T*
+() Tj
+T*
+(Output: experience direction for wireframes.) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 18 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Length 332 >>
+stream
+BT
+/F1 18 Tf
+72 780 Td
+24 TL
+(Page 5 - Information Architecture) Tj
+/F1 12 Tf
+T*
+() Tj
+T*
+(Define how information is structured.) Tj
+T*
+() Tj
+T*
+(Core decisions:) Tj
+T*
+(- Navigation model) Tj
+T*
+(- Page hierarchy) Tj
+T*
+(- Content grouping) Tj
+T*
+(- CTA placement logic) Tj
+T*
+() Tj
+T*
+(Output: sitemap and screen inventory.) Tj
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 18 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 10 0 R >>
+endobj
+12 0 obj
+<< /Length 319 >>
+stream
+BT
+/F1 18 Tf
+72 780 Td
+24 TL
+(Page 6 - Wireframing) Tj
+/F1 12 Tf
+T*
+() Tj
+T*
+(Wireframes test layout before visual polish.) Tj
+T*
+() Tj
+T*
+(Focus:) Tj
+T*
+(- Layout hierarchy) Tj
+T*
+(- Content density) Tj
+T*
+(- Interaction flow) Tj
+T*
+(- Error and empty states) Tj
+T*
+() Tj
+T*
+(Output: low-fidelity wireframe set.) Tj
+ET
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 18 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 12 0 R >>
+endobj
+14 0 obj
+<< /Length 322 >>
+stream
+BT
+/F1 18 Tf
+72 780 Td
+24 TL
+(Page 7 - Visual Direction) Tj
+/F1 12 Tf
+T*
+() Tj
+T*
+(Move from structure to visual expression.) Tj
+T*
+() Tj
+T*
+(Design elements:) Tj
+T*
+(- Typography scale) Tj
+T*
+(- Color system) Tj
+T*
+(- Spacing rhythm) Tj
+T*
+(- Reusable components) Tj
+T*
+() Tj
+T*
+(Output: high-fidelity key screens.) Tj
+ET
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 18 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 14 0 R >>
+endobj
+16 0 obj
+<< /Length 376 >>
+stream
+BT
+/F1 18 Tf
+72 780 Td
+24 TL
+(Page 8 - Validation and Iteration) Tj
+/F1 12 Tf
+T*
+() Tj
+T*
+(Design quality depends on validation.) Tj
+T*
+() Tj
+T*
+(Validation loop:) Tj
+T*
+(- Prototype critical flows) Tj
+T*
+(- Run usability checks) Tj
+T*
+(- Prioritize fixes by impact) Tj
+T*
+(- Iterate and document decisions) Tj
+T*
+() Tj
+T*
+(Completion outcome: test-backed UI direction.) Tj
+ET
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 18 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 16 0 R >>
+endobj
+18 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R] /Count 8 >>
+endobj
+19 0 obj
+<< /Type /Catalog /Pages 18 0 R >>
+endobj
+xref
+0 20
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000000570 00000 n 
+0000000697 00000 n 
+0000001132 00000 n 
+0000001259 00000 n 
+0000001650 00000 n 
+0000001777 00000 n 
+0000002204 00000 n 
+0000002331 00000 n 
+0000002715 00000 n 
+0000002844 00000 n 
+0000003215 00000 n 
+0000003344 00000 n 
+0000003718 00000 n 
+0000003847 00000 n 
+0000004275 00000 n 
+0000004404 00000 n 
+0000004508 00000 n 
+trailer
+<< /Size 20 /Root 19 0 R >>
+startxref
+4559
+%%EOF

@@ -1,25 +1,81 @@
+# Deploy to cPanel: FTP upload + SSH npm install (venv + app path from host).
+
 on:
   push:
     branches:
       - main
 
-name: 🚀 Deploy Node.js backend to cPanel
+name: 🚀 Deploy to cPanel
 
 jobs:
   deploy:
-    name: 🎉 FTP Deploy
+    name: FTP deploy
     runs-on: ubuntu-latest
     steps:
-      - name: 🚚 Checkout Code
-        uses: actions/checkout@v3
+      - name: 🚚 Checkout
+        uses: actions/checkout@v4
 
-      - name: 🚀 Deploy via FTP
+      - name: 📤 Upload via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.MYSECRETPASSWORD }}
+          password: ${{ secrets.FTP_PASSWORD }}
           protocol: ${{ secrets.FTP_PROTOCOL }}
           port: ${{ secrets.FTP_PORT }}
-          server-dir: ./ 
-          dangerous-clean-slate: true
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          dangerous-clean-slate: false
+
+      - name: 📦 NPM install on host (SSH)
+        if: ${{ secrets.SSH_PRIVATE_KEY != '' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            source /home/hqmrvoda/nodevenv/lasglowserver.phoenixstech.com/20/bin/activate && cd /home/hqmrvoda/lasglowserver.phoenixstech.com
+            npm install --omit=dev
+            mkdir -p tmp && touch tmp/restart.txt
+          script_stderr: true
+          script_stdout: true
+
+      # Optional: write .env on server from GitHub secret ENV_FILE (full .env file content)
+      - name: 📝 Write .env on host (SSH)
+        if: ${{ secrets.SSH_PRIVATE_KEY != '' && secrets.ENV_FILE != '' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            cd /home/hqmrvoda/lasglowserver.phoenixstech.com
+            cat > .env << 'ENVEOF'
+            ${{ secrets.ENV_FILE }}
+            ENVEOF
+          script_stderr: true
+          script_stdout: false
+
+# ─── GitHub Secrets (Settings → Secrets and variables → Actions) ─────────
+#
+# FTP: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, FTP_PROTOCOL, FTP_PORT (21),
+#      FTP_SERVER_DIR = /home/hqmrvoda/lasglowserver.phoenixstech.com
+#                  In cPanel: Setup Node.js App → your app → “Application root”
+# SSH: SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, SSH_PORT (22). Then Restart in cPanel if needed.
+#
+# Backend .env (choose one):
+#   A) On server: create .env in app root (e.g. /home/hqmrvoda/lasglowserver.phoenixstech.com/.env)
+#      via cPanel File Manager or SSH. Add JWT_SECRET, DATABASE_*, PORT, EMAIL_*, FLUTTERWAVE_*, etc.
+#      .env is not in the repo so deploy won’t overwrite it.
+#   B) In GitHub: add secret ENV_FILE = full contents of your .env (one line per VAR=value).
+#      The workflow will write it to .env on the server after deploy.
+#
+# ─── After each deploy (cPanel shared + Setup Node.js App) ───────────────
+# 1. Open cPanel → Setup Node.js App → your application.
+# 2. Click “Run NPM Install” (installs/updates dependencies).
+# 3. Click “Restart” to start or restart the app.
+#
+# If your host supports SSH and you want fully automatic install + restart,
+# we can add an SSH step; on typical shared hosting only FTP is available.

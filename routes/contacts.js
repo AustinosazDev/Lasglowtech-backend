@@ -3,6 +3,7 @@
 
 const express = require('express')
 const router = express.Router();
+const { verifyAdmin } = require('../middlewares/auth');
 
 const { GetContacts, submitContact
 
@@ -12,6 +13,6 @@ const { GetContacts, submitContact
 
 
 router.post('/', submitContact);
-router.get('/', GetContacts)
+router.get('/', verifyAdmin, GetContacts)
 
 module.exports = router

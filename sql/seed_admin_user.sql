@@ -1,0 +1,11 @@
+-- Admin user is created via the app so the password is hashed automatically (no hand-coded hash).
+--
+-- Option 1 (recommended): After deploying, call once:
+--   POST /admin/setup
+--   Body: { "email": "your-admin@example.com", "password": "YourSecurePassword" }
+--   Only works when no admin exists yet.
+--
+-- Option 2: From your machine with Node:
+--   node server/scripts/create-admin.js your-admin@example.com YourSecurePassword
+--
+-- Then log in with: POST /admin/login { "email": "...", "password": "..." }

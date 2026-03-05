@@ -1,24 +1,30 @@
 const express = require('express');
-
 const {
-    
-    getPosts,
-    getPost,
-    addPost,
-    deletePost,
-    updatePost
+  getPosts,
+  getPost,
+  getPostBySlug, 
+  deletePost,
+  updatePost,
+  addPost
 } = require('../controllers/posts');
 
 const router = express.Router();
-router.get('/', getPosts)
-router.get('/:id', getPost)
 
-router.post("/",  addPost)
-router.put("/:id",  updatePost)
+// Get all posts
+router.get('/', getPosts);
 
-router.delete("/:id",  deletePost)
+router.get('/:slug', getPostBySlug);
 
-  
+// Optional: fallback for numeric IDs only
+router.get('/id/:id', getPost);
 
-module.exports = router
+//  Add a new post
+router.post('/', addPost);
 
+// Update post
+router.put('/:id', updatePost);
+
+// Delete post
+router.delete('/:id', deletePost);
+
+module.exports = router;

@@ -1,6 +1,6 @@
 // index.js
 const dotenv = require('dotenv');
-dotenv.config();
+dotenv.config({ path: `${__dirname}/.env` });
 
 const express = require('express');
 const cors = require('cors');
@@ -10,17 +10,23 @@ const path = require('path');
 const fs = require('fs');
 
 const config = require('./config');
+const { ensureTables } = require('./bootstrap');
 const fileUpload = require('./middlewares/upload'); // for /upload/files route
 
 const postRoutes = require('./routes/posts.js');
 
 const contactRoutes = require('./routes/contacts.js');
 const subscribRoutes = require('./routes/subscribe.js');
+const paymentRoutes = require('./routes/payments.js');
+const userRoutes = require('./routes/users.js');
+const catalogueRoutes = require('./routes/catalogues.js');
+const adminRoutes = require('./routes/admin.js');
+const careerRoutes = require('./routes/careers.js');
+const lmsRoutes = require('./routes/lms.js');
 
 
 
 const { port, allowedDomains } = config;
-console.log(allowedDomains);
 
 const app = express();
 
@@ -37,12 +43,7 @@ app.use(cookieParser());
 const isDev = process.env.NODE_ENV !== 'production';
 
 // 3️⃣ Static serving of production uploads
-if (!isDev) {
-  app.use(
-    '/uploads',
-    express.static(path.join(__dirname, 'uploads'))
-  );
-}
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 4️⃣ Utility to ensure a directory exists
 const ensureDir = (dir) => {
@@ -57,11 +58,8 @@ const storage = multer.diskStorage({
     const ext = file.originalname.toLowerCase().split('.').pop();
 
     // base folder differs by env
-
-
-    const base = isDev
-      ? path.join(__dirname, '../frontend/public/upload')
-      : path.join(__dirname, 'uploads');
+    // In development this project uses `Lasglowtech-website/public/upload`.
+    const base = path.join(__dirname, 'uploads');
 
     const sub = ext === 'pdf' ? 'files' : 'images';
     const uploadDir = path.join(base, sub);
@@ -103,6 +101,12 @@ app.use('/posts', postRoutes);
 
 app.use('/subscribe', subscribRoutes);
 app.use('/contacts', contactRoutes);
+app.use('/payments', paymentRoutes);
+app.use('/users', userRoutes);
+app.use('/catalogues', catalogueRoutes);
+app.use('/admin', adminRoutes);
+app.use('/careers', careerRoutes);
+app.use('/lms', lmsRoutes);
 
 
 // health check endpoint
@@ -111,6 +115,13 @@ app.get('/api/health', (req, res) => {
 });
 
 // 9️⃣ Start the servers
-app.listen(port, () => {
-  console.log(`Server listening on port ${port} (dev: ${isDev})`);
-});
+ensureTables()
+  .then(() => {
+    app.listen(port, () => {
+      console.log(`Server listening on port ${port} (dev: ${isDev})`);
+    });
+  })
+  .catch((error) => {
+    console.error('Bootstrap failed:', error.message);
+    process.exit(1);
+  });

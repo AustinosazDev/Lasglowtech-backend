@@ -46,10 +46,9 @@ const addToMailchimpList = async (email) => {
       email_address: email,
       status: 'subscribed',
     });
-    console.log(`Added ${email} to Mailchimp`);
   } catch (err) {
     if (err.response?.body?.title === 'Member Exists') {
-      console.log('Email already exists in Mailchimp');
+      return;
     } else {
       console.error('Mailchimp error:', err.response?.body || err.message);
       throw err;

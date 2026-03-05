@@ -2,6 +2,10 @@ const config = {
 email_pass:process.env.EMAIL_PASSWORD,
 email_port:process.env.EMAIL_PORT,
 email_user: process.env.EMAIL_USER,
+flutterwave_secret_key: process.env.FLUTTERWAVE_SECRET_KEY,
+flutterwave_public_key: process.env.FLUTTERWAVE_PUBLIC_KEY,
+flutterwave_encryption_key: process.env.FLUTTERWAVE_ENCRYPTION_KEY,
+flutterwave_webhook_hash: process.env.FLUTTERWAVE_WEBHOOK_HASH,
  
 
     // mailchip configuration

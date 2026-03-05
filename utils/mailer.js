@@ -28,7 +28,6 @@ mailchimp.setConfig({
 apiKey: config.apiKey,
   server: config.server
 });
-console.log(config.email_user);
 
 const listId =  config.listid;
 
@@ -52,12 +51,11 @@ const sendSubscriptionEmail = async (toEmail) => {
       email_address: toEmail,
       status: 'subscribed',
     });
-    console.log('Added to Mailchimp:', toEmail);
   } catch (err) {
     console.error('Mailchimp error:', err.response?.body || err.message);
     // Optional: still succeed if already subscribed
     if (err.response?.body?.title === 'Member Exists') {
-      console.log('Email already exists in Mailchimp');
+      return;
     } else {
       throw err;
     }
