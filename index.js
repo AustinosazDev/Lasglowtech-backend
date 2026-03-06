@@ -1,12 +1,15 @@
 // index.js
 const dotenv = require('dotenv');
-dotenv.config({ path: `${__dirname}/.env` });
+const path = require('path');
+dotenv.config({ path: path.join(__dirname, '.env') });
+if (process.env.NODE_ENV === 'production') {
+  dotenv.config({ path: path.join(__dirname, '.env.production') });
+}
 
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
 
 const config = require('./config');
@@ -114,7 +117,30 @@ app.get('/api/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// 9️⃣ Start the servers
+// 9️⃣ Start the server with graceful shutdown (production / PM2)
+let server;
+function startServer() {
+  server = app.listen(port, () => {
+    console.log(`Server listening on port ${port} (dev: ${isDev})`);
+  });
+}
+
+function shutdown(signal) {
+  console.log(`${signal} received, closing server...`);
+  if (server) {
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000);
+  } else {
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 ensureTables()
   .then(() => {
     console.log('Database tables ensured!');
@@ -124,8 +150,5 @@ ensureTables()
     // Do NOT exit, just continue
   })
   .finally(() => {
-    // Start the server no matter what
-    app.listen(port, () => {
-      console.log(`Server listening on port ${port} (dev: ${isDev})`);
-    });
+    startServer();
   });

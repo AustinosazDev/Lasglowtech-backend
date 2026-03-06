@@ -1,29 +1,33 @@
-# Upload files to cPanel via FTP on push to main.
+# VPS deploy: SSH in, fetch + reset --hard (all tracked files replaced with repo), npm ci, PM2 restart.
 
 on:
   push:
     branches:
       - main
 
-name: Deploy to cPanel
+name: Deploy to VPS
 
 jobs:
   deploy:
-    name: Upload files
+    name: Deploy and start app
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Upload via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - name: Deploy via SSH (replace files from repo, npm ci, PM2 restart)
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ${{ secrets.FTP_PROTOCOL }}
-          port: ${{ secrets.FTP_PORT }}
-          server-dir: ${{ format('{0}/', secrets.FTP_SERVER_DIR) }}
-          dangerous-clean-slate: false
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: GITHUB_TOKEN,GITHUB_REPOSITORY
+          script: |
+            su - Austinosaz -c "cd ~/backend/Lasglowblog && git fetch https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git main && git reset --hard FETCH_HEAD && npm ci --omit=dev && (pm2 restart lasglowblog-api --env production || pm2 start ecosystem.config.cjs --env production) && pm2 save"
 
-# Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, FTP_PROTOCOL, FTP_PORT, FTP_SERVER_DIR (path without trailing slash; workflow adds /)
+# Required secrets: SSH_HOST, SSH_USER (e.g. root), SSH_PRIVATE_KEY (full private key content), GH_PAT (for git pull).
+# Optional: SSH_PORT (default 22). Add your public key to VPS ~/.ssh/authorized_keys for root so the key works.
+# One-time on VPS: as Austinosaz, git clone https://github.com/OWNER/REPO.git ~/backend/Lasglowblog.

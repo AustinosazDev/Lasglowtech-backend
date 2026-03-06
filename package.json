@@ -19,7 +19,14 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "start:pm2": "pm2 start index.js --name api"
+    "start:prod": "NODE_ENV=production node index.js",
+    "start:pm2": "pm2 start ecosystem.config.cjs --env production",
+    "pm2:stop": "pm2 stop api",
+    "pm2:restart": "pm2 restart api --env production",
+    "pm2:logs": "pm2 logs api"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "keywords": [],
   "author": "",
