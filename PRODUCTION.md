@@ -179,7 +179,19 @@ Useful commands:
 
 ## 5. Auto deploy (GitHub Actions)
 
-On push to `main`, the workflow SSHs into the VPS and runs: `git pull origin main`, `npm ci --omit=dev`, then `pm2 restart api` (or start if not running) and `pm2 save`. No FTP—deploy is SSH-only. Set GitHub secrets: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY` (optional: `SSH_PORT`). One-time on server: clone the repo into `~/backend/Lasglowblog`; for private repos, add a deploy key so `git pull` works.
+On push to `main`, the workflow SSHs into the VPS, runs `git fetch` + `git reset --hard`, `npm ci --omit=dev`, then `pm2 restart lasglowblog-api` (or start if not running) and `pm2 save`. Set GitHub secrets: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, `AUTH_TOKEN` (GitHub PAT for git fetch; optional: `SSH_PORT`).
+
+**If you see `ssh: handshake failed: unable to authenticate, attempted methods [none publickey]`:**
+
+1. **Public key must be on the VPS.** The private key in `SSH_PRIVATE_KEY` has a matching public key. That **public** key must be in `root`'s `authorized_keys` on the server. From your **local** machine (where you have the key):
+   ```bash
+   ssh-copy-id -i ~/.ssh/id_ed25519.pub root@185.113.249.113
+   ```
+   (Or copy the contents of `~/.ssh/id_ed25519.pub` and on the VPS run as root: `mkdir -p /root/.ssh && echo "PASTE_PUBLIC_KEY_HERE" >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys`.)
+
+2. **GitHub secret `SSH_PRIVATE_KEY`.** Must be the **full** private key (all lines, including `-----BEGIN OPENSSH PRIVATE KEY-----` and `-----END OPENSSH PRIVATE KEY-----`). Copy from a terminal with `cat ~/.ssh/id_ed25519` so newlines are preserved. No extra spaces at start/end. Re-paste the secret if it still fails.
+
+3. **Test from your PC:** `ssh -i ~/.ssh/id_ed25519 root@185.113.249.113` — if that works, the same key in GitHub Secrets should work once pasted correctly.
 
 ## 6. API URL the frontend uses
 

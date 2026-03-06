@@ -17,7 +17,7 @@ jobs:
       - name: Deploy via SSH (replace files from repo, npm ci, PM2 restart)
         uses: appleboy/ssh-action@v1.0.3
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -28,6 +28,6 @@ jobs:
           script: |
             su - Austinosaz -c "cd ~/backend/Lasglowblog && git fetch https://x-access-token:${AUTH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git main && git reset --hard FETCH_HEAD && npm ci --omit=dev && (pm2 restart lasglowblog-api --env production || pm2 start ecosystem.config.cjs --env production) && pm2 save"
 
-# Required secrets: SSH_HOST, SSH_USER (e.g. root), SSH_PRIVATE_KEY (full private key content), GH_PAT (for git pull).
-# Optional: SSH_PORT (default 22). Add your public key to VPS ~/.ssh/authorized_keys for root so the key works.
-# One-time on VPS: as Austinosaz, git clone https://github.com/OWNER/REPO.git ~/backend/Lasglowblog.
+# Required secrets: SSH_HOST, SSH_USER (e.g. root), SSH_PRIVATE_KEY (full private key content), AUTH_TOKEN (GitHub PAT for git fetch).
+# If SSH fails: ensure the PUBLIC key is in root@VPS authorized_keys: ssh-copy-id -i ~/.ssh/id_ed25519.pub root@IP
+# Optional: SSH_PORT (default 22).
