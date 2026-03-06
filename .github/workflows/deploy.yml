@@ -24,7 +24,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          envs: GITHUB_TOKEN,GITHUB_REPOSITORY
+          envs: AUTH_TOKEN,GITHUB_REPOSITORY
           script: |
             su - Austinosaz -c "cd ~/backend/Lasglowblog && git fetch https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git main && git reset --hard FETCH_HEAD && npm ci --omit=dev && (pm2 restart lasglowblog-api --env production || pm2 start ecosystem.config.cjs --env production) && pm2 save"
 

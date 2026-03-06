@@ -80,8 +80,11 @@ Your schema and data are in `sql/hqmrvoda_lasglowtechserver.sql`. One-time setup
 
 ### Option A – Run the setup script (from repo root on VPS)
 
+From the backend repo root (where `index.js` and `sql/` live):
+
 ```bash
-cd /home/Austinosaz/backend/Lasglowblog   # or wherever the repo is
+cd /home/Austinosaz/backend/Lasglowblog
+ls scripts/   # should show setup-mysql-vps.sh; if missing, run: git pull origin main
 chmod +x scripts/setup-mysql-vps.sh
 ```
 
