@@ -54,6 +54,29 @@ You need one **A record** so `api.pantherarestolounge.com` points to your VPS IP
    ```
    Certbot will configure HTTPS and auto-renewal. Your API URL is then `https://api.pantherarestolounge.com` (no port needed).
 
+#### API proxy config: what to put in the file and how to update
+
+If you use **Nginx** for the API subdomain (standalone Nginx or CyberPanel with Nginx), the proxy block should look like this (repo file: `server/nginx-api-proxy-snippet.conf`):
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:5000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_cache_bypass $http_upgrade;
+}
+```
+
+- **To update:** Edit the vhost/server block for `api.pantherarestolounge.com` in Nginx (e.g. in CyberPanel: Website → api.pantherarestolounge.com → Nginx config / vhost config), paste the block above inside the `server { }`, then reload Nginx: `sudo nginx -t && sudo systemctl reload nginx`.
+- If you keep a snippet file on the server (e.g. `/home/Austinosaz/cyberpanel-api-vhost-proxy.conf`), put the same content there and include it from the vhost, or paste it directly into the vhost.
+
+If you use **LiteSpeed** for that vhost, use the LiteSpeed syntax in `server/cyberpanel-api-vhost-proxy.conf` (`context / { type proxy; handler http://127.0.0.1:5000; }`) and add it to the LiteSpeed vhost config, then restart LiteSpeed.
+
 ### Deploy replaces all tracked files on the server
 
 On each push to `main`, the workflow runs `git fetch` + `git reset --hard FETCH_HEAD` on the server. That **replaces all tracked files** with the contents of the repo, so the server always matches what you pushed. Files in `.gitignore` (e.g. `.env`, `node_modules`) are not touched. So you can push from your machine and the server will get the exact same code; no need to clean the server by hand.
@@ -76,7 +99,38 @@ nano .env.production   # or vim – fill in real values
 
 ## 2. MySQL on the VPS (tables + initial data)
 
-Your schema and data are in `sql/hqmrvoda_lasglowtechserver.sql`. One-time setup on the VPS:
+### Load `sql/datas.sql` and other SQL files once
+
+To load all data from `sql/datas.sql` (and migrations/seeds) into `lasglowdb` in one go, run the load script on the VPS. It uses **CREATE TABLE IF NOT EXISTS** and **INSERT IGNORE** so you can run it even if some tables or rows already exist.
+
+From the backend app directory:
+
+```bash
+cd ~/backend/Lasglowblog
+chmod +x scripts/load-sql-once.sh
+./scripts/load-sql-once.sh
+```
+
+When prompted, enter your MySQL password (same as `DATABASE_PASSWORD` in `.env.production`). Or set env vars so the script (and prompt) use the right DB:
+
+```bash
+export DATABASE=lasglowdb
+export DATABASE_USER=lasglow_tech
+export DATABASE_PASSWORD='Lasglowtech$7'   # or leave unset to be prompted
+./scripts/load-sql-once.sh
+```
+
+The script does:
+
+1. Runs `sql/create_missing_tables.sql` (creates `posts`, `contacts`, `email_subscriptions` if missing).
+2. Runs `sql/datas.sql` with CREATE TABLE IF NOT EXISTS and INSERT IGNORE (main dump, safe for existing DB).
+3. Runs other SQL files in order: `add_certificate_settings.sql`, `add_certificate_detail_columns.sql`, `add_issue_certificate_column.sql`, `create_added_tables_once.sql`, `seed_admin_user.sql`, and the rest.
+
+Run it **once** after the database and user exist. You can run it again later; it will skip existing tables and ignore duplicate rows.
+
+---
+
+Alternative: full server setup (install MySQL, create DB/user, then import). One-time setup on the VPS:
 
 ### Option A – Run the setup script (from repo root on VPS)
 

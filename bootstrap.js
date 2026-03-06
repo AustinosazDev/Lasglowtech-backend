@@ -325,6 +325,40 @@ const ensureTables = async () => {
   `).catch(() => {});
   await db.query(`INSERT IGNORE INTO certificate_settings (id, default_signature_label) VALUES (1, 'Authorized Signatory')`).catch(() => {});
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS posts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      cover VARCHAR(255) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      content TEXT NOT NULL,
+      shares INT DEFAULT 0,
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      slug VARCHAR(255) DEFAULT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      firstName VARCHAR(100) DEFAULT NULL,
+      lastName VARCHAR(100) DEFAULT NULL,
+      email VARCHAR(150) DEFAULT NULL,
+      subject VARCHAR(200) DEFAULT NULL,
+      message TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS email_subscriptions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL,
+      status ENUM('subscribed','unsubscribed') DEFAULT 'subscribed',
+      subscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      unsubscribed_at TIMESTAMP NULL DEFAULT NULL
+    )
+  `);
+
   const [countRows] = await db.query('SELECT COUNT(*) AS total FROM catalogues');
   if ((countRows[0]?.total || 0) === 0) {
     await db.query(
