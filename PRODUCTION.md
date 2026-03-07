@@ -32,8 +32,8 @@ You need one **A record** so `api.pantherarestolounge.com` points to your VPS IP
 - **Cloudflare:**  
   - **DNS** → **Add record**: Type **A**, Name **api**, IPv4 **185.113.249.113**, Proxy status off (grey cloud) for now so SSL with Certbot works. Save.
 
-**Check that it’s working** (after 5–30 min):  
-- In a browser or terminal: `ping api.pantherarestolounge.com` — should show `185.113.249.113`.  
+**Check that it’s working** (afi.pantherarestolounge.comter 5–30 min):  
+- In a browser or terminal: `ping ap` — should show `185.113.249.113`.  
 - Or: `nslookup api.pantherarestolounge.com` — should return that IP.
 
 #### Step 2: Nginx (on the VPS as root): Install if needed, then add a server block that proxies to your Node app:

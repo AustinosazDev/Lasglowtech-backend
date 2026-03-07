@@ -48,11 +48,12 @@ if [ -f "$SQL_DIR/create_missing_tables.sql" ]; then
 fi
 
 # 2) Load main dump (datas.sql) with IF NOT EXISTS and INSERT IGNORE so it's safe
+# --force: continue on errors (e.g. "Multiple primary key" when keys already exist)
 if [ -f "$SQL_DIR/datas.sql" ]; then
   echo "[2/3] Running datas.sql (CREATE IF NOT EXISTS, INSERT IGNORE) ..."
   sed -e 's/CREATE TABLE `/CREATE TABLE IF NOT EXISTS `/g' \
       -e 's/INSERT INTO `/INSERT IGNORE INTO `/g' \
-      "$SQL_DIR/datas.sql" | mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME"
+      "$SQL_DIR/datas.sql" | mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" --force
   echo "  Done."
 else
   echo "[2/3] datas.sql not found, skipping."
