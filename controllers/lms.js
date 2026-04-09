@@ -707,74 +707,142 @@ const adminPreviewCertificate = async (req, res) => {
   }
 };
 
+const issueCertificateForEnrollment = async ({
+  enrollmentId,
+  recipientFullName,
+  bodyMessage,
+  signedDate,
+  signatureLabel,
+}) => {
+  const [[row]] = await db.query(
+    `SELECT e.id, e.course_id, e.status, e.certificate_code, e.certificate_sent_at,
+            u.email AS learner_email, u.username AS learner_name, c.title AS course_title
+     FROM lms_enrollments e
+     INNER JOIN users u ON u.id = e.user_id
+     INNER JOIN lms_courses c ON c.id = e.course_id
+     WHERE e.id = ?
+     LIMIT 1`,
+    [enrollmentId]
+  );
+
+  if (!row) {
+    const error = new Error('Enrollment not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (row.certificate_sent_at) {
+    const error = new Error('Certificate already issued for this enrollment.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const certificateCode = row.certificate_code || `LGT-CERT-${row.course_id}-${row.id}`;
+  const issuedAt = new Date();
+  const learnerName = (recipientFullName && String(recipientFullName).trim()) || row.learner_name || 'Learner';
+  const certSignedAt = signedDate ? new Date(signedDate) : issuedAt;
+  const certMessage = bodyMessage != null ? String(bodyMessage).trim() : null;
+  const certSigLabel = (signatureLabel && String(signatureLabel).trim()) || null;
+  const certificateHtml = buildCertificateHtml({
+    certificateCode,
+    learnerName,
+    courseTitle: row.course_title || 'Course',
+    completionDate: issuedAt,
+    bodyMessage: certMessage || '',
+    signedDate: certSignedAt,
+    signatureLabel: certSigLabel || 'Authorized Signatory',
+    logoUrl: process.env.SITE_URL || process.env.FRONTEND_URL || '',
+    certificateBackgroundUrl: getCertificateBackgroundUrl(),
+    certificateLogoUrl: getCertificateLogoUrl(),
+  });
+
+  try {
+    await sendCourseCertificateEmail({
+      to: row.learner_email,
+      learnerName,
+      courseTitle: row.course_title,
+      certificateCode,
+      certificateHtml,
+    });
+  } catch (mailError) {
+    console.error('Admin issue certificate email error:', mailError.message);
+  }
+
+  await db.query(
+    `UPDATE lms_enrollments
+     SET status = 'completed', progress_percent = 100, certificate_code = ?, certificate_sent_at = ?,
+         certificate_message = ?, certificate_signed_at = ?, certificate_signature_label = ?
+     WHERE id = ?`,
+    [certificateCode, issuedAt, certMessage, certSignedAt, certSigLabel, enrollmentId]
+  );
+
+  return {
+    enrollmentId,
+    learnerName,
+    courseTitle: row.course_title,
+    certificateCode,
+    certificateSentAt: issuedAt.toISOString(),
+  };
+};
+
 const adminIssueCertificate = async (req, res) => {
   const { enrollmentId } = req.params;
   const { bodyMessage, signedDate, signatureLabel, recipientFullName } = req.body || {};
   try {
-    const [[row]] = await db.query(
-      `SELECT e.id, e.course_id, e.status, e.certificate_code, e.certificate_sent_at,
-              u.email AS learner_email, u.username AS learner_name, c.title AS course_title
-       FROM lms_enrollments e
-       INNER JOIN users u ON u.id = e.user_id
-       INNER JOIN lms_courses c ON c.id = e.course_id
-       WHERE e.id = ?
-       LIMIT 1`,
-      [enrollmentId]
-    );
-    if (!row) {
-      return res.status(404).json({ error: 'Enrollment not found.' });
-    }
-    if (row.certificate_sent_at) {
-      return res.status(400).json({ error: 'Certificate already issued for this enrollment.' });
-    }
-
-    const certificateCode = row.certificate_code || `LGT-CERT-${row.course_id}-${row.id}`;
-    const issuedAt = new Date();
-    const learnerName = (recipientFullName && String(recipientFullName).trim()) || row.learner_name || 'Learner';
-    const certificateHtml = buildCertificateHtml({
-      certificateCode,
-      learnerName,
-      courseTitle: row.course_title || 'Course',
-      completionDate: issuedAt,
-      bodyMessage: bodyMessage != null ? String(bodyMessage).trim() : '',
-      signedDate: signedDate ? new Date(signedDate) : issuedAt,
-      signatureLabel: (signatureLabel && String(signatureLabel).trim()) || 'Authorized Signatory',
-      logoUrl: process.env.SITE_URL || process.env.FRONTEND_URL || '',
-      certificateBackgroundUrl: getCertificateBackgroundUrl(),
-      certificateLogoUrl: getCertificateLogoUrl(),
+    const result = await issueCertificateForEnrollment({
+      enrollmentId,
+      recipientFullName,
+      bodyMessage,
+      signedDate,
+      signatureLabel,
     });
-
-    try {
-      await sendCourseCertificateEmail({
-        to: row.learner_email,
-        learnerName,
-        courseTitle: row.course_title,
-        certificateCode,
-        certificateHtml,
-      });
-    } catch (mailError) {
-      console.error('Admin issue certificate email error:', mailError.message);
-    }
-
-    const certSignedAt = signedDate ? new Date(signedDate) : issuedAt;
-    const certMessage = bodyMessage != null ? String(bodyMessage).trim() : null;
-    const certSigLabel = (signatureLabel && String(signatureLabel).trim()) || null;
-    await db.query(
-      `UPDATE lms_enrollments
-       SET status = 'completed', progress_percent = 100, certificate_code = ?, certificate_sent_at = ?,
-           certificate_message = ?, certificate_signed_at = ?, certificate_signature_label = ?
-       WHERE id = ?`,
-      [certificateCode, issuedAt, certMessage, certSignedAt, certSigLabel, enrollmentId]
-    );
-
     return res.status(200).json({
       message: 'Certificate issued.',
-      certificateCode,
-      certificateSentAt: issuedAt.toISOString(),
+      certificateCode: result.certificateCode,
+      certificateSentAt: result.certificateSentAt,
     });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
+};
+
+const adminBatchIssueCertificates = async (req, res) => {
+  const { enrollmentIds, bodyMessage, signedDate, signatureLabel } = req.body || {};
+  const ids = Array.isArray(enrollmentIds)
+    ? [...new Set(enrollmentIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+    : [];
+
+  if (!ids.length) {
+    return res.status(400).json({ error: 'Select at least one enrollment.' });
+  }
+
+  const results = [];
+  for (const enrollmentId of ids) {
+    try {
+      const result = await issueCertificateForEnrollment({
+        enrollmentId,
+        bodyMessage,
+        signedDate,
+        signatureLabel,
+      });
+      results.push({ enrollmentId, status: 'issued', ...result });
+    } catch (error) {
+      results.push({
+        enrollmentId,
+        status: 'failed',
+        error: error.message,
+      });
+    }
+  }
+
+  const issuedCount = results.filter((item) => item.status === 'issued').length;
+  const failedCount = results.length - issuedCount;
+  return res.status(200).json({
+    message: `Batch certificate processing completed. ${issuedCount} issued, ${failedCount} failed.`,
+    issuedCount,
+    failedCount,
+    results,
+  });
 };
 
 module.exports = {
@@ -796,4 +864,5 @@ module.exports = {
   getAdminEnrollments,
   adminPreviewCertificate,
   adminIssueCertificate,
+  adminBatchIssueCertificates,
 };

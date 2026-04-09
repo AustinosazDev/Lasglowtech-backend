@@ -120,8 +120,9 @@ app.get('/api/health', (req, res) => {
 // 9️⃣ Start the server with graceful shutdown (production / PM2)
 let server;
 function startServer() {
-  server = app.listen(port, () => {
-    console.log(`Server listening on port ${port} (dev: ${isDev})`);
+  const host = process.env.HOST || '0.0.0.0';
+  server = app.listen(port, host, () => {
+    console.log(`Server listening on ${host}:${port} (dev: ${isDev})`);
   });
 }
 

@@ -39,13 +39,12 @@ flutterwave_webhook_hash: process.env.FLUTTERWAVE_WEBHOOK_HASH,
     allowedDomains: (process.env.NODE_ENV === 'production' ?
         [
             process.env.REMOTE_CLIENT_APP,
-       
-        ] :
+            process.env.REMOTE_SERVER_API, // allow browser access to API URL (e.g. https://api.lasglowtech.com.ng)
+        ].filter(Boolean) :
         [
             process.env.PORT,
             process.env.LOCAL_CLIENT_APP,
-          
-        ])
+        ].filter(Boolean))
 };
 
 module.exports = config;

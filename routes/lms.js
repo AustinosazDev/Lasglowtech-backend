@@ -18,6 +18,7 @@ const {
   getAdminEnrollments,
   adminPreviewCertificate,
   adminIssueCertificate,
+  adminBatchIssueCertificates,
 } = require('../controllers/lms');
 const { verifyAdmin, verifyToken } = require('../middlewares/auth');
 
@@ -43,5 +44,6 @@ router.delete('/admin/courses/:courseId/modules/:moduleId', verifyAdmin, deleteM
 router.get('/admin/enrollments', verifyAdmin, getAdminEnrollments);
 router.get('/admin/enrollments/:enrollmentId/certificate', verifyAdmin, adminPreviewCertificate);
 router.post('/admin/enrollments/:enrollmentId/issue-certificate', verifyAdmin, adminIssueCertificate);
+router.post('/admin/enrollments/issue-certificates/batch', verifyAdmin, adminBatchIssueCertificates);
 
 module.exports = router;
