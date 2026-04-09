@@ -14,6 +14,7 @@ const {
   createModule,
   updateModule,
   deleteModule,
+  getMyCertificateData,
   getMyCertificate,
   getAdminEnrollments,
   adminPreviewCertificate,
@@ -30,6 +31,7 @@ router.post('/enroll/:courseId', verifyToken, enrollCourse);
 router.get('/my/dashboard', verifyToken, getMyLearningDashboard);
 router.get('/my/enrollments/:enrollmentId/modules', verifyToken, getMyCourseModules);
 router.put('/my/enrollments/:enrollmentId/modules/:moduleId/progress', verifyToken, updateModuleProgress);
+router.get('/my/enrollments/:enrollmentId/certificate-data', verifyToken, getMyCertificateData);
 router.get('/my/enrollments/:enrollmentId/certificate', verifyToken, getMyCertificate);
 
 router.get('/admin/courses', verifyAdmin, getAdminCourses);

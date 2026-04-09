@@ -59,6 +59,62 @@ const parseReferenceLinks = (value) => {
     .filter(Boolean);
 };
 
+const getMyCertificatePayload = async ({ userId, enrollmentId }) => {
+  const [[row]] = await db.query(
+    `SELECT e.id, e.status, e.progress_percent, e.certificate_code, e.certificate_sent_at,
+            e.certificate_message, e.certificate_signed_at, e.certificate_signature_label,
+            u.username AS learner_name, c.title AS course_title
+     FROM lms_enrollments e
+     INNER JOIN users u ON u.id = e.user_id
+     INNER JOIN lms_courses c ON c.id = e.course_id
+     WHERE e.id = ? AND e.user_id = ?
+     LIMIT 1`,
+    [enrollmentId, userId]
+  );
+
+  if (!row) {
+    const error = new Error('Enrollment not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!row.certificate_sent_at) {
+    const error = new Error(
+      'Certificate is available only after admin verification. Programme completion and payment must be acknowledged by Lasglowtech before download.'
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const [[paymentRow]] = await db.query(
+    `SELECT id FROM career_applications WHERE user_id = ? AND payment_status IN ('paid', 'waived') LIMIT 1`,
+    [userId]
+  );
+  if (!paymentRow) {
+    const error = new Error(
+      'Payment must be verified before you can download your certificate. Please ensure your programme fee is marked as paid.'
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (Number(row.progress_percent || 0) < 100 && row.status !== 'completed') {
+    const error = new Error('Certificate is available after full completion.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    certificateCode: row.certificate_code || `LGT-CERT-${enrollmentId}`,
+    recipientName: row.learner_name || 'Learner',
+    courseName: row.course_title || 'Course',
+    date: row.certificate_sent_at || new Date(),
+    bodyMessage: (row.certificate_message != null ? row.certificate_message : '') || '',
+    signedDate: row.certificate_signed_at || null,
+    signatureLabel: row.certificate_signature_label || 'Authorized Signatory',
+  };
+};
+
 const mapCourse = (row) => ({
   id: row.id,
   title: row.title,
@@ -356,57 +412,40 @@ const getMyCertificate = async (req, res) => {
   }
 
   try {
-    const [[row]] = await db.query(
-      `SELECT e.id, e.status, e.progress_percent, e.certificate_code, e.certificate_sent_at,
-              e.certificate_message, e.certificate_signed_at, e.certificate_signature_label,
-              u.username AS learner_name, c.title AS course_title
-       FROM lms_enrollments e
-       INNER JOIN users u ON u.id = e.user_id
-       INNER JOIN lms_courses c ON c.id = e.course_id
-       WHERE e.id = ? AND e.user_id = ?
-       LIMIT 1`,
-      [enrollmentId, userId]
-    );
-    if (!row) {
-      return res.status(404).json({ error: 'Enrollment not found.' });
-    }
-    if (!row.certificate_sent_at) {
-      return res.status(400).json({
-        error: 'Certificate is available only after admin verification. Programme completion and payment must be acknowledged by Lasglowtech before download.',
-      });
-    }
-    const [[paymentRow]] = await db.query(
-      `SELECT id FROM career_applications WHERE user_id = ? AND payment_status IN ('paid', 'waived') LIMIT 1`,
-      [userId]
-    );
-    if (!paymentRow) {
-      return res.status(400).json({
-        error: 'Payment must be verified before you can download your certificate. Please ensure your programme fee is marked as paid.',
-      });
-    }
-    if (Number(row.progress_percent || 0) < 100 && row.status !== 'completed') {
-      return res.status(400).json({ error: 'Certificate is available after full completion.' });
-    }
-
-    const certificateCode = row.certificate_code || `LGT-CERT-${enrollmentId}`;
+    const payload = await getMyCertificatePayload({ userId, enrollmentId });
     const html = buildCertificateHtml({
-      certificateCode,
-      learnerName: row.learner_name || 'Learner',
-      courseTitle: row.course_title || 'Course',
-      completionDate: row.certificate_sent_at || new Date(),
-      bodyMessage: (row.certificate_message != null ? row.certificate_message : '') || '',
-      signedDate: row.certificate_signed_at || null,
-      signatureLabel: row.certificate_signature_label || 'Authorized Signatory',
+      certificateCode: payload.certificateCode,
+      learnerName: payload.recipientName,
+      courseTitle: payload.courseName,
+      completionDate: payload.date,
+      bodyMessage: payload.bodyMessage,
+      signedDate: payload.signedDate,
+      signatureLabel: payload.signatureLabel,
       logoUrl: process.env.SITE_URL || process.env.FRONTEND_URL || '',
       certificateBackgroundUrl: getCertificateBackgroundUrl(),
       certificateLogoUrl: getCertificateLogoUrl(),
     });
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${certificateCode}.html"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${payload.certificateCode}.html"`);
     return res.status(200).send(html);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+};
+
+const getMyCertificateData = async (req, res) => {
+  const userId = req.user?.id;
+  const { enrollmentId } = req.params;
+  if (!userId || !enrollmentId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const payload = await getMyCertificatePayload({ userId, enrollmentId });
+    return res.status(200).json(payload);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 };
 
@@ -860,6 +899,7 @@ module.exports = {
   createModule,
   updateModule,
   deleteModule,
+  getMyCertificateData,
   getMyCertificate,
   getAdminEnrollments,
   adminPreviewCertificate,
