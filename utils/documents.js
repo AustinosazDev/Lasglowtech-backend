@@ -95,7 +95,13 @@ const buildCertificateHtml = ({
     : '';
   const logoMarkup = resolvedLogo
     ? `<img src="${resolvedLogo}" alt="Lasglowtech" class="logo-image" />`
-    : `<div class="logo-mark">L</div>`;
+    : `<div class="logo-fallback">
+         <div class="logo-mark">L</div>
+         <div>
+           <div class="brand-name">LASGLOWTECH</div>
+           <div class="brand-sub">DIGITAL SERVICES</div>
+         </div>
+       </div>`;
   const bodyText = bodyMessage.trim()
     ? escapeHtml(bodyMessage)
     : 'This professional has demonstrated initiative and a commitment to deepening their skills and advancing their career.';
@@ -109,42 +115,40 @@ const buildCertificateHtml = ({
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;800&display=swap" rel="stylesheet" />
     <style>
       *{box-sizing:border-box}
-      body{margin:0;padding:24px;background:#0f172a;font-family:Georgia,serif}
+      body{margin:0;padding:24px;background:#1d2348;font-family:Georgia,serif}
       .page{max-width:1200px;margin:0 auto}
-      .certificate{position:relative;background:linear-gradient(135deg,#1a1f3a 0%,#2d3561 100%);aspect-ratio:1.414 / 1;width:100%;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.35)}
-      .corner{position:absolute;width:11%;height:16%;border-style:solid;z-index:1}
-      .corner.tl{top:0;left:0;border-width:32px 0 0 32px;border-color:#FF6B35 transparent transparent #FF6B35}
-      .corner.tr{top:0;right:0;border-width:32px 32px 0 0;border-color:#FF6B35 #FF6B35 transparent transparent}
-      .corner.bl{bottom:0;left:0;border-width:0 0 32px 32px;border-color:transparent transparent #FF6B35 #FF6B35}
-      .corner.br{bottom:0;right:0;border-width:0 32px 32px 0;border-color:transparent #FF6B35 #FF6B35 transparent}
-      .top-stripe{position:absolute;top:8%;left:0;right:0;height:6%;background:linear-gradient(90deg,transparent,#FF6B35,transparent);opacity:.8}
-      .inner{position:absolute;inset:5%;background:linear-gradient(135deg,#f9fafb 0%,#ffffff 100%);border-radius:18px;border:4px solid #1a1f3a;box-shadow:0 24px 60px rgba(26,31,58,0.32);overflow:hidden}
-      .inner::before{content:'';position:absolute;inset:8px;border:2px solid #FF6B35;border-radius:14px;opacity:.3}
-      .content{position:relative;height:100%;display:flex;flex-direction:column;padding:38px 52px;z-index:2}
-      .brand-row{display:flex;align-items:center;gap:14px;margin-bottom:28px}
-      .logo-mark{width:64px;height:64px;border-radius:999px;background:#FF6B35;border:4px solid #1a1f3a;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-size:28px;font-weight:800}
-      .logo-image{width:64px;height:64px;border-radius:999px;object-fit:cover;border:4px solid #1a1f3a;background:#fff}
-      .brand-name{font-family:'Cinzel',serif;font-size:28px;font-weight:800;letter-spacing:.08em;color:#1a1f3a}
-      .brand-sub{font-size:12px;letter-spacing:.35em;color:#6b7280}
-      .title-top{font-size:18px;letter-spacing:.35em;color:#6b7280;margin-bottom:8px}
-      .title-main{font-family:'Cinzel',serif;font-size:76px;line-height:.95;font-weight:800;color:#1a1f3a}
-      .recipient-wrap{margin:26px 0 24px;padding-bottom:16px;border-bottom:2px solid #d1d5db}
-      .recipient-name{font-family:'Brush Script MT','Segoe Script',cursive;font-size:72px;line-height:1;color:#1a1f3a}
-      .subcopy{font-size:22px;color:#374151;margin:0 0 16px}
-      .course-name{font-family:'Cinzel',serif;font-size:42px;font-weight:700;color:#1a1f3a}
-      .body-copy{margin:22px 0 24px;max-width:70%;font-size:18px;line-height:1.6;color:#4b5563}
-      .footer{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;gap:24px}
-      .footer .date{font-size:20px;font-weight:600;color:#1f2937}
-      .footer .code{font-size:13px;color:#6b7280;margin-top:6px}
-      .signature{text-align:right}
-      .signature-line{width:180px;border-bottom:2px solid #1f2937;margin:0 0 8px auto}
-      .signature-label{font-size:13px;color:#6b7280}
-      .seal-wrap{position:absolute;right:3%;bottom:5%;width:132px;height:132px;z-index:3}
-      .seal-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-      .seal-core{width:82px;height:82px;border-radius:999px;background:linear-gradient(135deg,#facc15,#f97316);border:4px solid #1a1f3a;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(0,0,0,.18)}
-      .seal-core::after{content:'';width:46px;height:46px;border-radius:999px;background:#1a1f3a}
-      .side-panel{position:absolute;right:0;top:0;bottom:0;width:16%;background:linear-gradient(180deg,#1a1f3a 0%,#2d3561 100%);border-left:4px solid #FF6B35}
-      .side-panel::after{content:'';position:absolute;inset:8px;border:2px solid rgba(250,204,21,.55)}
+      .certificate{position:relative;background:#1d2348;aspect-ratio:1.414 / 1;width:100%;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.35)}
+      .corner{position:absolute;width:16%;height:8.5%;border-style:solid;border-color:#ff6b35;z-index:1}
+      .corner.tl{top:0;left:0;border-width:18px 0 0 18px}
+      .corner.tr{top:0;right:0;border-width:18px 18px 0 0}
+      .corner.bl{bottom:0;left:0;border-width:0 0 18px 18px}
+      .corner.br{bottom:0;right:0;border-width:0 18px 18px 0}
+      .inner{position:absolute;inset:4.2%;background:#f8f6f2;border-radius:18px;border:1px solid #f27b48;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden}
+      .inner::before{content:'';position:absolute;inset:2px;border:1px solid #cfd4df;border-radius:16px}
+      .content{position:relative;height:100%;display:flex;flex-direction:column;padding:5.2% 4.8% 5.3%;z-index:2}
+      .side-panel{position:absolute;right:0;top:0;bottom:0;width:15.5%;background:#1d2348;border-left:2px solid #ff7a3d}
+      .brand-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:4.6%}
+      .logo-fallback{display:flex;align-items:center;gap:14px}
+      .logo-mark{width:48px;height:48px;border-radius:999px;background:#ff6b35;border:2px solid #1d2348;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-size:24px;font-weight:800}
+      .logo-image{height:56px;max-width:300px;object-fit:contain}
+      .brand-name{font-family:'Cinzel',serif;font-size:26px;font-weight:800;letter-spacing:.08em;color:#13224a}
+      .brand-sub{font-size:10px;letter-spacing:.38em;color:#a06b53}
+      .title-top{font-family:'Cinzel',serif;font-size:14px;letter-spacing:.42em;color:#8f7966;margin-bottom:6px}
+      .title-main{font-family:'Cinzel',serif;font-size:70px;line-height:.95;font-weight:800;color:#13224a}
+      .recipient-wrap{margin:0 0 4.2%;padding:0 16% 2% 0;border-bottom:1px solid #b8bfcb}
+      .recipient-name{font-family:'Brush Script MT','Segoe Script',cursive;font-size:64px;line-height:1;color:#10214b}
+      .subcopy-wrap{padding-right:18%}
+      .subcopy{font-size:20px;color:#1b1f2f;margin:0 0 1.8%}
+      .course-name{font-family:'Cinzel',serif;font-size:33px;font-weight:700;line-height:1.1;color:#13224a;text-transform:uppercase}
+      .body-copy{margin-top:3%;max-width:66%;font-size:15px;line-height:1.55;color:#263252}
+      .footer{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding-right:18%}
+      .footer .date{font-family:'Cinzel',serif;font-size:24px;font-weight:600;color:#13224a}
+      .footer .code{font-size:11px;color:#6c7285;margin-top:4px}
+      .signature{text-align:right;padding-bottom:4px}
+      .signature-line{width:128px;border-bottom:1px solid #1a244f;margin:0 0 6px auto}
+      .signature-label{font-size:10px;color:#596073}
+      .seal-wrap{position:absolute;right:6.5%;bottom:8.8%;display:flex;align-items:flex-end;gap:8px;z-index:3}
+      .seal-stem{width:96px;border-bottom:1px solid #1a244f}
       @media print{body{padding:0;background:#fff}.page{max-width:none}.certificate{box-shadow:none}}
     </style>
   </head>
@@ -155,16 +159,11 @@ const buildCertificateHtml = ({
         <div class="corner tr"></div>
         <div class="corner bl"></div>
         <div class="corner br"></div>
-        <div class="top-stripe"></div>
-
         <div class="inner">
+          <div class="side-panel"></div>
           <div class="content">
             <div class="brand-row">
               ${logoMarkup}
-              <div>
-                <div class="brand-name">LASGLOWTECH</div>
-                <div class="brand-sub">DIGITAL SERVICES</div>
-              </div>
             </div>
 
             <div>
@@ -176,8 +175,10 @@ const buildCertificateHtml = ({
               <div class="recipient-name">${escapeHtml(learnerName)}</div>
             </div>
 
-            <p class="subcopy">has successfully completed the online course</p>
-            <div class="course-name">${escapeHtml(courseTitle)}</div>
+            <div class="subcopy-wrap">
+              <p class="subcopy">has successfully completed the online course</p>
+              <div class="course-name">${escapeHtml(courseTitle)}</div>
+            </div>
 
             <div class="body-copy">${bodyText}</div>
 
@@ -194,24 +195,24 @@ const buildCertificateHtml = ({
           </div>
 
           <div class="seal-wrap">
-            <svg viewBox="0 0 100 100" width="132" height="132" aria-hidden="true">
-              <circle cx="50" cy="50" r="45" fill="#1a1f3a"></circle>
-              ${Array.from({ length: 24 }).map((_, i) => {
-                const angle = (i * 15 * Math.PI) / 180;
-                const innerRadius = 35;
-                const outerRadius = 48;
+            <div class="seal-stem"></div>
+            <svg viewBox="0 0 100 100" width="96" height="96" aria-hidden="true">
+              <circle cx="50" cy="50" r="31" fill="#1f2752"></circle>
+              ${Array.from({ length: 28 }).map((_, i) => {
+                const angle = (i * 12.857 * Math.PI) / 180;
+                const innerRadius = 32;
+                const outerRadius = 46;
                 const x1 = 50 + innerRadius * Math.cos(angle);
                 const y1 = 50 + innerRadius * Math.sin(angle);
                 const x2 = 50 + outerRadius * Math.cos(angle);
                 const y2 = 50 + outerRadius * Math.sin(angle);
                 return `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="white" stroke-width="3"></line>`;
               }).join('')}
+              <circle cx="50" cy="50" r="20" fill="#ff6b35"></circle>
+              <circle cx="50" cy="50" r="11" fill="#1f2752"></circle>
             </svg>
-            <div class="seal-center"><div class="seal-core"></div></div>
           </div>
         </div>
-
-        <div class="side-panel"></div>
       </div>
     </div>
   </body>
