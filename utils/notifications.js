@@ -28,19 +28,23 @@ const appBanner = (title, subtitle) => `
   </div>
 `;
 
-const renderEmailShell = ({ title, subtitle, contentHtml }) => `
-  <div style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
-    <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+const renderEmailShell = ({ title, subtitle, contentHtml, layout = 'default' }) => {
+  const maxInner = layout === 'certificate' ? '700px' : '640px';
+  const padX = layout === 'certificate' ? '28px' : '24px';
+  return `
+  <div style="margin:0;padding:20px 12px;background:#eef2f6;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#111827;line-height:1.55;-webkit-text-size-adjust:100%;">
+    <div style="max-width:${maxInner};width:100%;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;box-sizing:border-box;">
       ${appBanner(title, subtitle)}
-      <div style="padding:24px;">
+      <div style="padding:22px ${padX} 26px;word-wrap:break-word;overflow-wrap:anywhere;">
         ${contentHtml}
       </div>
-      <div style="padding:16px 24px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">
-        This is an automated message from Lasglowtech.
+      <div style="padding:14px ${padX} 18px;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px;line-height:1.45;">
+        This is an automated message from Lasglowtech. Please do not reply directly to this email; use our website contact form instead.
       </div>
     </div>
   </div>
 `;
+};
 
 const sendEmail = async ({ to, subject, html, attachments = [] }) => {
   if (!to || !config.email_user || !config.email_pass) {
@@ -308,31 +312,78 @@ const sendInvoiceEmail = async ({ to, customerName, invoiceNumber, invoiceHtml, 
   }
 };
 
+const safePdfFilename = (code) => {
+  const base = String(code || 'certificate').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_').slice(0, 80);
+  return `${base || 'certificate'}.pdf`;
+};
+
 const sendCourseCertificateEmail = async ({ to, learnerName, courseTitle, certificateCode, certificateHtml }) => {
-  return sendEmail({
-    to,
-    subject: `Course Certificate - ${courseTitle}`,
-    html: renderEmailShell({
-      title: 'Course Completion Certificate',
-      subtitle: 'Congratulations from Lasglowtech Learning',
-      contentHtml: `
-        <p style="margin:0 0 12px;font-size:14px;">Hello ${escapeHtml(learnerName || 'Learner')},</p>
-        <p style="margin:0 0 8px;font-size:14px;line-height:1.6;">
-          Congratulations on completing <strong>${escapeHtml(courseTitle)}</strong>.
+  if (!to || !config.email_user || !config.email_pass) {
+    return { status: 'skipped', error: 'Email not configured.' };
+  }
+
+  let pdfBuffer = null;
+  let pdfError = '';
+  try {
+    const { certificateHtmlToPdfBuffer } = require('./certificatePdf');
+    pdfBuffer = await certificateHtmlToPdfBuffer(certificateHtml);
+  } catch (err) {
+    pdfError = String(err?.message || err);
+    console.error('Certificate PDF:', pdfError);
+  }
+
+  const attachments = [];
+  if (pdfBuffer && pdfBuffer.length) {
+    attachments.push({
+      filename: safePdfFilename(certificateCode),
+      content: pdfBuffer,
+      contentType: 'application/pdf',
+    });
+  } else {
+    attachments.push({
+      filename: `${safePdfFilename(certificateCode).replace(/\.pdf$/i, '')}.html`,
+      content: certificateHtml,
+      contentType: 'text/html; charset=utf-8',
+    });
+  }
+
+  const attachmentNote = pdfBuffer?.length
+    ? '<p style="margin:16px 0 0;font-size:14px;line-height:1.55;color:#475569;">Your official certificate is attached as a <strong>PDF</strong> (A4 landscape). Open it in any PDF viewer or print it. If the certificate includes a QR code, scan it to verify authenticity on our website.</p>'
+    : `<p style="margin:16px 0 0;font-size:14px;line-height:1.55;color:#b45309;">We could not build the PDF automatically (${escapeHtml(
+        pdfError.slice(0, 220)
+      )}). Your certificate is attached as an <strong>HTML</strong> file: open it in Chrome or Edge, then use <strong>Print → Save as PDF</strong>.</p>`;
+
+  try {
+    await sendEmail({
+      to,
+      subject: `Your Lasglowtech certificate — ${courseTitle}`,
+      html: renderEmailShell({
+        title: 'Course completion certificate',
+        subtitle: 'Lasglowtech Digital Learning',
+        layout: 'certificate',
+        contentHtml: `
+        <p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#1e293b;">Hello ${escapeHtml(learnerName || 'Learner')},</p>
+        <p style="margin:0 0 20px;font-size:15px;line-height:1.55;color:#334155;">
+          Congratulations on completing <strong style="color:#0f172a;">${escapeHtml(courseTitle)}</strong>.
         </p>
-        <p style="margin:0;font-size:13px;color:#4b5563;">
-          Certificate ID: <strong>${escapeHtml(certificateCode)}</strong>. Your certificate is attached.
-        </p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:12px 14px;font-size:13px;color:#64748b;vertical-align:top;width:34%;">Certificate ID</td>
+            <td style="padding:12px 14px;font-size:14px;color:#0f172a;vertical-align:top;word-break:break-word;font-family:Consolas,Monaco,monospace;"><strong>${escapeHtml(
+              certificateCode
+            )}</strong></td>
+          </tr>
+        </table>
+        ${attachmentNote}
       `,
-    }),
-    attachments: [
-      {
-        filename: `${certificateCode}.html`,
-        content: certificateHtml,
-        contentType: 'text/html; charset=utf-8',
-      },
-    ],
-  });
+      }),
+      attachments,
+    });
+    return { status: 'sent', error: '', pdfAttached: Boolean(pdfBuffer && pdfBuffer.length) };
+  } catch (error) {
+    console.error('sendCourseCertificateEmail:', error);
+    return { status: 'failed', error: String(error?.message || error), pdfAttached: false };
+  }
 };
 
 module.exports = {

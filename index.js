@@ -45,8 +45,21 @@ app.use(cookieParser());
 // 2️⃣ Environment detection
 const isDev = process.env.NODE_ENV !== 'production';
 
-// 3️⃣ Static serving of production uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// 3️⃣ Static serving of production uploads (CORS + CORP so SPA canvas / html2canvas can rasterize logos & seals)
+app.use(
+  '/uploads',
+  (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      res.setHeader('Access-Control-Max-Age', '86400');
+      return res.sendStatus(204);
+    }
+    next();
+  },
+  express.static(path.join(__dirname, 'uploads'))
+);
 
 // 4️⃣ Utility to ensure a directory exists
 const ensureDir = (dir) => {

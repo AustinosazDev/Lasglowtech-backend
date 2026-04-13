@@ -1,7 +1,8 @@
 const path = require('path');
 const fs = require('fs');
 const db = require('../db');
-const { buildCertificateHtml } = require('../utils/documents');
+const { buildCertificateHtmlAsync } = require('../utils/documents');
+const { getPublicClientOrigin } = require('../utils/publicClientOrigin');
 const { sendCourseCertificateEmail } = require('../utils/notifications');
 
 /** Base URL for certificate assets (uploads). Prefer API_URL so the server that has the files is used. */
@@ -10,12 +11,22 @@ const getUploadsBaseUrl = () => {
   return base || '';
 };
 
-const getCertificateLogoUrl = () => {
+/** Stable URL + `?t=mtime` so replaced logo/seal/signature files are not cached by browsers or PDF renderers. */
+const getUploadCertificateAssetUrl = (filename) => {
   const baseUrl = getUploadsBaseUrl();
   if (!baseUrl) return '';
-  const logoPath = path.join(__dirname, '..', 'uploads', 'certificate-logo.png');
-  return fs.existsSync(logoPath) ? `${baseUrl}/uploads/certificate-logo.png` : '';
+  const filePath = path.join(__dirname, '..', 'uploads', filename);
+  if (!fs.existsSync(filePath)) return '';
+  try {
+    const stat = fs.statSync(filePath);
+    const t = stat.mtime ? stat.mtime.getTime() : Date.now();
+    return `${baseUrl}/uploads/${filename}?t=${t}`;
+  } catch {
+    return `${baseUrl}/uploads/${filename}`;
+  }
 };
+
+const getCertificateLogoUrl = () => getUploadCertificateAssetUrl('certificate-logo.png');
 
 const getCertificateBackgroundUrl = () => {
   if (process.env.CERTIFICATE_BACKGROUND_URL) return process.env.CERTIFICATE_BACKGROUND_URL.replace(/\/$/, '');
@@ -30,6 +41,23 @@ const getCertificateBackgroundUrl = () => {
   } catch {
     return `${baseUrl}/uploads/certificate-bg.png`;
   }
+};
+
+const getCertificateSealUrl = () => getUploadCertificateAssetUrl('certificate-seal.png');
+
+const getCertificateSignatureUrl = () => getUploadCertificateAssetUrl('certificate-signature.png');
+
+const certificateAssetUrls = () => ({
+  certificateLogoUrl: getCertificateLogoUrl(),
+  certificateBackgroundUrl: getCertificateBackgroundUrl(),
+  sealUrl: getCertificateSealUrl(),
+  signatureImageUrl: getCertificateSignatureUrl(),
+});
+
+const getCertificateVerifyUrlForCode = (certificateCode) => {
+  const base = getPublicClientOrigin();
+  if (!base || !certificateCode) return '';
+  return `${base}/verify-certificate?code=${encodeURIComponent(String(certificateCode))}`;
 };
 
 const slugify = (text = '') =>
@@ -104,14 +132,16 @@ const getMyCertificatePayload = async ({ userId, enrollmentId }) => {
     throw error;
   }
 
+  const certificateCode = row.certificate_code || `LGT-CERT-${enrollmentId}`;
   return {
-    certificateCode: row.certificate_code || `LGT-CERT-${enrollmentId}`,
+    certificateCode,
     recipientName: row.learner_name || 'Learner',
     courseName: row.course_title || 'Course',
     date: row.certificate_sent_at || new Date(),
     bodyMessage: (row.certificate_message != null ? row.certificate_message : '') || '',
     signedDate: row.certificate_signed_at || null,
     signatureLabel: row.certificate_signature_label || 'Authorized Signatory',
+    verifyUrl: getCertificateVerifyUrlForCode(certificateCode),
   };
 };
 
@@ -371,13 +401,12 @@ const updateModuleProgress = async (req, res) => {
     const issueCert = Boolean(enrollment.issue_certificate_on_completion !== 0);
     if (status === 'completed' && !enrollment.certificate_sent_at && issueCert) {
       const certificateCode = enrollment.certificate_code || `LGT-CERT-${enrollment.course_id}-${enrollment.id}`;
-      const certificateHtml = buildCertificateHtml({
+      const certificateHtml = await buildCertificateHtmlAsync({
         certificateCode,
         learnerName: enrollment.learner_name || 'Learner',
         courseTitle: enrollment.course_title || 'Course',
         completionDate: new Date(),
-        certificateBackgroundUrl: getCertificateBackgroundUrl(),
-        certificateLogoUrl: getCertificateLogoUrl(),
+        ...certificateAssetUrls(),
       });
       try {
         await sendCourseCertificateEmail({
@@ -413,7 +442,7 @@ const getMyCertificate = async (req, res) => {
 
   try {
     const payload = await getMyCertificatePayload({ userId, enrollmentId });
-    const html = buildCertificateHtml({
+    const html = await buildCertificateHtmlAsync({
       certificateCode: payload.certificateCode,
       learnerName: payload.recipientName,
       courseTitle: payload.courseName,
@@ -421,9 +450,7 @@ const getMyCertificate = async (req, res) => {
       bodyMessage: payload.bodyMessage,
       signedDate: payload.signedDate,
       signatureLabel: payload.signatureLabel,
-      logoUrl: process.env.SITE_URL || process.env.FRONTEND_URL || '',
-      certificateBackgroundUrl: getCertificateBackgroundUrl(),
-      certificateLogoUrl: getCertificateLogoUrl(),
+      ...certificateAssetUrls(),
     });
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -725,7 +752,7 @@ const adminPreviewCertificate = async (req, res) => {
     }
 
     const certificateCode = row.certificate_code || `LGT-CERT-${enrollmentId}`;
-    const html = buildCertificateHtml({
+    const html = await buildCertificateHtmlAsync({
       certificateCode,
       learnerName: row.learner_name || 'Learner',
       courseTitle: row.course_title || 'Course',
@@ -733,9 +760,7 @@ const adminPreviewCertificate = async (req, res) => {
       bodyMessage: row.certificate_message != null ? row.certificate_message : '',
       signedDate: row.certificate_signed_at || null,
       signatureLabel: row.certificate_signature_label || 'Authorized Signatory',
-      logoUrl: process.env.SITE_URL || process.env.FRONTEND_URL || '',
-      certificateBackgroundUrl: getCertificateBackgroundUrl(),
-      certificateLogoUrl: getCertificateLogoUrl(),
+      ...certificateAssetUrls(),
     });
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -782,7 +807,7 @@ const issueCertificateForEnrollment = async ({
   const certSignedAt = signedDate ? new Date(signedDate) : issuedAt;
   const certMessage = bodyMessage != null ? String(bodyMessage).trim() : null;
   const certSigLabel = (signatureLabel && String(signatureLabel).trim()) || null;
-  const certificateHtml = buildCertificateHtml({
+  const certificateHtml = await buildCertificateHtmlAsync({
     certificateCode,
     learnerName,
     courseTitle: row.course_title || 'Course',
@@ -790,9 +815,7 @@ const issueCertificateForEnrollment = async ({
     bodyMessage: certMessage || '',
     signedDate: certSignedAt,
     signatureLabel: certSigLabel || 'Authorized Signatory',
-    logoUrl: process.env.SITE_URL || process.env.FRONTEND_URL || '',
-    certificateBackgroundUrl: getCertificateBackgroundUrl(),
-    certificateLogoUrl: getCertificateLogoUrl(),
+    ...certificateAssetUrls(),
   });
 
   try {
@@ -884,6 +907,57 @@ const adminBatchIssueCertificates = async (req, res) => {
   });
 };
 
+/** Admin: remove a learner from a course — deletes all module progress and certificate fields for that enrollment. */
+const adminDeleteEnrollment = async (req, res) => {
+  const { enrollmentId } = req.params;
+  const id = Number(enrollmentId);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Invalid enrollment id.' });
+  }
+  try {
+    const [[row]] = await db.query('SELECT id FROM lms_enrollments WHERE id = ? LIMIT 1', [id]);
+    if (!row) {
+      return res.status(404).json({ error: 'Enrollment not found.' });
+    }
+    await db.query('DELETE FROM lms_progress WHERE enrollment_id = ?', [id]);
+    await db.query('DELETE FROM lms_enrollments WHERE id = ?', [id]);
+    return res.status(200).json({ message: 'Enrollment removed. All progress and certificate data for this course enrollment have been deleted.' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+/** Public: verify an issued certificate by its printed code (QR / manual entry). */
+const verifyCertificatePublic = async (req, res) => {
+  const code = String(req.query.code || '').trim();
+  if (!code) {
+    return res.status(400).json({ valid: false, error: 'Certificate code is required.' });
+  }
+  try {
+    const [[row]] = await db.query(
+      `SELECT e.certificate_sent_at, u.username AS learner_name, c.title AS course_title
+       FROM lms_enrollments e
+       INNER JOIN users u ON u.id = e.user_id
+       INNER JOIN lms_courses c ON c.id = e.course_id
+       WHERE e.certificate_code = ? AND e.certificate_sent_at IS NOT NULL
+       LIMIT 1`,
+      [code]
+    );
+    if (!row) {
+      return res.status(404).json({ valid: false, error: 'No issued certificate was found for this code.' });
+    }
+    return res.status(200).json({
+      valid: true,
+      certificateCode: code,
+      recipientName: row.learner_name || 'Learner',
+      courseTitle: row.course_title || 'Course',
+      issuedAt: row.certificate_sent_at,
+    });
+  } catch (error) {
+    return res.status(500).json({ valid: false, error: error.message });
+  }
+};
+
 module.exports = {
   getPublishedCourses,
   getCourseBySlug,
@@ -905,4 +979,6 @@ module.exports = {
   adminPreviewCertificate,
   adminIssueCertificate,
   adminBatchIssueCertificates,
+  adminDeleteEnrollment,
+  verifyCertificatePublic,
 };

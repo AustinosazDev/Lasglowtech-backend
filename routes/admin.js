@@ -46,6 +46,36 @@ const certificateLogoUpload = multer({
   },
 });
 
+const certificateSealUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => cb(null, 'certificate-seal.png'),
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\/(png|jpeg|jpg|webp)$/.test(file.mimetype);
+    cb(null, !!ok);
+  },
+});
+
+const certificateSignatureUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => cb(null, 'certificate-signature.png'),
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\/(png|jpeg|jpg|webp)$/.test(file.mimetype);
+    cb(null, !!ok);
+  },
+});
+
 const filesDir = path.join(uploadsDir, 'files');
 const moduleResourceUpload = multer({
   storage: multer.diskStorage({
@@ -389,6 +419,40 @@ router.post(
     const baseUrl = (process.env.SITE_URL || process.env.API_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/uploads/certificate-logo.png` : '/uploads/certificate-logo.png';
     return res.status(200).json({ message: 'Certificate logo updated.', url });
+  }
+);
+
+/**
+ * Upload certificate seal image (PNG/JPEG/WEBP). Replaces uploads/certificate-seal.png.
+ */
+router.post(
+  '/upload/certificate-seal',
+  verifyAdmin,
+  certificateSealUpload.single('file'),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded. Use field name "file" and PNG, JPEG, or WEBP.' });
+    }
+    const baseUrl = (process.env.API_URL || process.env.SITE_URL || '').replace(/\/$/, '');
+    const url = baseUrl ? `${baseUrl}/uploads/certificate-seal.png` : '/uploads/certificate-seal.png';
+    return res.status(200).json({ message: 'Certificate seal updated.', url });
+  }
+);
+
+/**
+ * Upload handwritten signature (PNG with transparency recommended). Replaces uploads/certificate-signature.png.
+ */
+router.post(
+  '/upload/certificate-signature',
+  verifyAdmin,
+  certificateSignatureUpload.single('file'),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded. Use field name "file" and PNG, JPEG, or WEBP.' });
+    }
+    const baseUrl = (process.env.API_URL || process.env.SITE_URL || '').replace(/\/$/, '');
+    const url = baseUrl ? `${baseUrl}/uploads/certificate-signature.png` : '/uploads/certificate-signature.png';
+    return res.status(200).json({ message: 'Certificate signature image updated.', url });
   }
 );
 
