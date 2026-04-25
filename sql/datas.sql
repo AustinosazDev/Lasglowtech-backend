@@ -231,6 +231,7 @@ CREATE TABLE `lms_courses` (
   `level` enum('beginner','intermediate','advanced') COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'beginner',
   `duration_weeks` int NOT NULL DEFAULT '4',
   `image_url` varchar(400) COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `brochure_url` varchar(500) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `is_featured` tinyint(1) NOT NULL DEFAULT '0',
   `is_published` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -241,11 +242,11 @@ CREATE TABLE `lms_courses` (
 -- Dumping data for table `lms_courses`
 --
 
-INSERT INTO `lms_courses` (`id`, `title`, `slug`, `summary`, `description`, `level`, `duration_weeks`, `image_url`, `is_featured`, `is_published`, `created_at`, `updated_at`) VALUES
-(1, 'UI/UX Design Masterclass', 'ui-ux-design-masterclass', 'From design fundamentals to polished portfolio-ready projects.', 'Comprehensive UI/UX training covering research, wireframing, interface design, prototyping, and portfolio development.', 'beginner', 8, 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200', 1, 1, '2026-02-28 21:58:19', '2026-02-28 22:02:20'),
-(2, 'Frontend Web Development Bootcamp', 'frontend-web-development-bootcamp', 'Build modern frontend applications with production-ready practices.', 'Hands-on frontend training using HTML, CSS, JavaScript, React, API integration, and deployment workflows.', 'intermediate', 5, 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=1200', 1, 1, '2026-02-28 21:58:19', '2026-03-03 09:45:35'),
-(3, 'E-commerce Website Building', 'e-commerce-website-building', 'Practical e-commerce implementation for creators and business teams.', 'Learn e-commerce strategy, catalog setup, checkout flows, payment integration, and optimization basics.', 'intermediate', 6, 'https://images.unsplash.com/photo-1556740749-887f6717d7e4?w=1200', 0, 1, '2026-02-28 21:58:19', '2026-02-28 22:43:35'),
-(4, 'Freelancing and Client Acquisition', 'freelancing-and-client-acquisition', 'Win clients, structure projects, and scale service revenue.', 'Covers offer design, outreach, proposals, closing, delivery process, and retention systems.', 'beginner', 6, 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200', 0, 1, '2026-02-28 21:58:19', '2026-03-03 09:56:44');
+INSERT INTO `lms_courses` (`id`, `title`, `slug`, `summary`, `description`, `level`, `duration_weeks`, `image_url`, `brochure_url`, `is_featured`, `is_published`, `created_at`, `updated_at`) VALUES
+(1, 'UI/UX Design Masterclass', 'ui-ux-design-masterclass', 'From design fundamentals to polished portfolio-ready projects.', 'Comprehensive UI/UX training covering research, wireframing, interface design, prototyping, and portfolio development.', 'beginner', 8, 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200', NULL, 1, 1, '2026-02-28 21:58:19', '2026-02-28 22:02:20'),
+(2, 'Frontend Web Development Bootcamp', 'frontend-web-development-bootcamp', 'Build modern frontend applications with production-ready practices.', 'Hands-on frontend training using HTML, CSS, JavaScript, React, API integration, and deployment workflows.', 'intermediate', 5, 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=1200', NULL, 1, 1, '2026-02-28 21:58:19', '2026-03-03 09:45:35'),
+(3, 'E-commerce Website Building', 'e-commerce-website-building', 'Practical e-commerce implementation for creators and business teams.', 'Learn e-commerce strategy, catalog setup, checkout flows, payment integration, and optimization basics.', 'intermediate', 6, 'https://images.unsplash.com/photo-1556740749-887f6717d7e4?w=1200', NULL, 0, 1, '2026-02-28 21:58:19', '2026-02-28 22:43:35'),
+(4, 'Freelancing and Client Acquisition', 'freelancing-and-client-acquisition', 'Win clients, structure projects, and scale service revenue.', 'Covers offer design, outreach, proposals, closing, delivery process, and retention systems.', 'beginner', 6, 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200', NULL, 0, 1, '2026-02-28 21:58:19', '2026-03-03 09:56:44');
 
 -- --------------------------------------------------------
 

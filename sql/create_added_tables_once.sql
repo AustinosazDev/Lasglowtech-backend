@@ -114,11 +114,15 @@ CREATE TABLE IF NOT EXISTS lms_courses (
   level ENUM('beginner','intermediate','advanced') NOT NULL DEFAULT 'beginner',
   duration_weeks INT NOT NULL DEFAULT 4,
   image_url VARCHAR(400),
+  brochure_url VARCHAR(500),
   is_featured TINYINT(1) NOT NULL DEFAULT 0,
   is_published TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+ALTER TABLE lms_courses
+  ADD COLUMN IF NOT EXISTS brochure_url VARCHAR(500) NULL AFTER image_url;
 
 CREATE TABLE IF NOT EXISTS lms_modules (
   id INT AUTO_INCREMENT PRIMARY KEY,

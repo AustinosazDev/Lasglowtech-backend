@@ -154,6 +154,7 @@ const mapCourse = (row) => ({
   level: row.level,
   durationWeeks: row.duration_weeks,
   imageUrl: row.image_url || '',
+  brochureUrl: row.brochure_url || '',
   isFeatured: Boolean(row.is_featured),
   isPublished: Boolean(row.is_published),
   issueCertificateOnCompletion: row.issue_certificate_on_completion === undefined ? true : Boolean(row.issue_certificate_on_completion),
@@ -498,7 +499,18 @@ const getAdminCourses = async (req, res) => {
 };
 
 const createCourse = async (req, res) => {
-  const { title, summary, description, level, durationWeeks, imageUrl, isFeatured, isPublished, issueCertificateOnCompletion } = req.body;
+  const {
+    title,
+    summary,
+    description,
+    level,
+    durationWeeks,
+    imageUrl,
+    brochureUrl,
+    isFeatured,
+    isPublished,
+    issueCertificateOnCompletion,
+  } = req.body;
   if (!title || !summary) {
     return res.status(400).json({ error: 'title and summary are required.' });
   }
@@ -513,8 +525,8 @@ const createCourse = async (req, res) => {
     const issueCert = issueCertificateOnCompletion !== false;
     const [result] = await db.query(
       `INSERT INTO lms_courses
-      (title, slug, summary, description, level, duration_weeks, image_url, is_featured, is_published, issue_certificate_on_completion)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (title, slug, summary, description, level, duration_weeks, image_url, brochure_url, is_featured, is_published, issue_certificate_on_completion)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title,
         slug,
@@ -523,6 +535,7 @@ const createCourse = async (req, res) => {
         ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner',
         Number(durationWeeks || 4),
         imageUrl || '',
+        brochureUrl || '',
         isFeatured ? 1 : 0,
         isPublished === false ? 0 : 1,
         issueCert ? 1 : 0,
@@ -537,7 +550,18 @@ const createCourse = async (req, res) => {
 
 const updateCourse = async (req, res) => {
   const { id } = req.params;
-  const { title, summary, description, level, durationWeeks, imageUrl, isFeatured, isPublished, issueCertificateOnCompletion } = req.body;
+  const {
+    title,
+    summary,
+    description,
+    level,
+    durationWeeks,
+    imageUrl,
+    brochureUrl,
+    isFeatured,
+    isPublished,
+    issueCertificateOnCompletion,
+  } = req.body;
   if (!title || !summary) {
     return res.status(400).json({ error: 'title and summary are required.' });
   }
@@ -552,7 +576,7 @@ const updateCourse = async (req, res) => {
 
     await db.query(
       `UPDATE lms_courses
-       SET title = ?, slug = ?, summary = ?, description = ?, level = ?, duration_weeks = ?, image_url = ?, is_featured = ?, is_published = ?, issue_certificate_on_completion = ?
+       SET title = ?, slug = ?, summary = ?, description = ?, level = ?, duration_weeks = ?, image_url = ?, brochure_url = ?, is_featured = ?, is_published = ?, issue_certificate_on_completion = ?
        WHERE id = ?`,
       [
         title,
@@ -562,6 +586,7 @@ const updateCourse = async (req, res) => {
         ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner',
         Number(durationWeeks || 4),
         imageUrl || '',
+        brochureUrl || '',
         isFeatured ? 1 : 0,
         isPublished === false ? 0 : 1,
         issueCert ? 1 : 0,
