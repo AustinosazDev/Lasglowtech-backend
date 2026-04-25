@@ -90,10 +90,7 @@ const parseReferenceLinks = (value) => {
 let lmsCoursesHasBrochureUrlColumn;
 
 const hasLmsCoursesBrochureUrlColumn = async () => {
-  if (typeof lmsCoursesHasBrochureUrlColumn === 'boolean') {
-    return lmsCoursesHasBrochureUrlColumn;
-  }
-
+  // Reset cache every time to ensure fresh DB check
   try {
     const [rows] = await db.query(
       `SELECT 1
@@ -103,12 +100,10 @@ const hasLmsCoursesBrochureUrlColumn = async () => {
          AND column_name = 'brochure_url'
        LIMIT 1`
     );
-    lmsCoursesHasBrochureUrlColumn = rows.length > 0;
+    return rows.length > 0;
   } catch (_) {
-    lmsCoursesHasBrochureUrlColumn = false;
+    return false;
   }
-
-  return lmsCoursesHasBrochureUrlColumn;
 };
 
 const getMyCertificatePayload = async ({ userId, enrollmentId }) => {
