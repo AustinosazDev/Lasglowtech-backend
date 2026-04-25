@@ -87,6 +87,30 @@ const parseReferenceLinks = (value) => {
     .filter(Boolean);
 };
 
+let lmsCoursesHasBrochureUrlColumn;
+
+const hasLmsCoursesBrochureUrlColumn = async () => {
+  if (typeof lmsCoursesHasBrochureUrlColumn === 'boolean') {
+    return lmsCoursesHasBrochureUrlColumn;
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'lms_courses'
+         AND column_name = 'brochure_url'
+       LIMIT 1`
+    );
+    lmsCoursesHasBrochureUrlColumn = rows.length > 0;
+  } catch (_) {
+    lmsCoursesHasBrochureUrlColumn = false;
+  }
+
+  return lmsCoursesHasBrochureUrlColumn;
+};
+
 const getMyCertificatePayload = async ({ userId, enrollmentId }) => {
   const [[row]] = await db.query(
     `SELECT e.id, e.status, e.progress_percent, e.certificate_code, e.certificate_sent_at,
@@ -523,23 +547,38 @@ const createCourse = async (req, res) => {
     }
 
     const issueCert = issueCertificateOnCompletion !== false;
+    const hasBrochureUrlColumn = await hasLmsCoursesBrochureUrlColumn();
+    const insertColumns = [
+      'title',
+      'slug',
+      'summary',
+      'description',
+      'level',
+      'duration_weeks',
+      'image_url',
+      ...(hasBrochureUrlColumn ? ['brochure_url'] : []),
+      'is_featured',
+      'is_published',
+      'issue_certificate_on_completion',
+    ];
+    const insertValues = [
+      title,
+      slug,
+      summary,
+      description || '',
+      ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner',
+      Number(durationWeeks || 4),
+      imageUrl || '',
+      ...(hasBrochureUrlColumn ? [brochureUrl || ''] : []),
+      isFeatured ? 1 : 0,
+      isPublished === false ? 0 : 1,
+      issueCert ? 1 : 0,
+    ];
+    const placeholders = insertColumns.map(() => '?').join(', ');
     const [result] = await db.query(
-      `INSERT INTO lms_courses
-      (title, slug, summary, description, level, duration_weeks, image_url, brochure_url, is_featured, is_published, issue_certificate_on_completion)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        title,
-        slug,
-        summary,
-        description || '',
-        ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner',
-        Number(durationWeeks || 4),
-        imageUrl || '',
-        brochureUrl || '',
-        isFeatured ? 1 : 0,
-        isPublished === false ? 0 : 1,
-        issueCert ? 1 : 0,
-      ]
+      `INSERT INTO lms_courses (${insertColumns.join(', ')})
+       VALUES (${placeholders})`,
+      insertValues
     );
 
     return res.status(201).json({ id: result.insertId, slug, message: 'Course created.' });
@@ -574,24 +613,39 @@ const updateCourse = async (req, res) => {
       return res.status(409).json({ error: 'Another course with this title exists.' });
     }
 
+    const hasBrochureUrlColumn = await hasLmsCoursesBrochureUrlColumn();
+    const updateAssignments = [
+      'title = ?',
+      'slug = ?',
+      'summary = ?',
+      'description = ?',
+      'level = ?',
+      'duration_weeks = ?',
+      'image_url = ?',
+      ...(hasBrochureUrlColumn ? ['brochure_url = ?'] : []),
+      'is_featured = ?',
+      'is_published = ?',
+      'issue_certificate_on_completion = ?',
+    ];
+    const updateValues = [
+      title,
+      slug,
+      summary,
+      description || '',
+      ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner',
+      Number(durationWeeks || 4),
+      imageUrl || '',
+      ...(hasBrochureUrlColumn ? [brochureUrl || ''] : []),
+      isFeatured ? 1 : 0,
+      isPublished === false ? 0 : 1,
+      issueCert ? 1 : 0,
+      id,
+    ];
     await db.query(
       `UPDATE lms_courses
-       SET title = ?, slug = ?, summary = ?, description = ?, level = ?, duration_weeks = ?, image_url = ?, brochure_url = ?, is_featured = ?, is_published = ?, issue_certificate_on_completion = ?
+       SET ${updateAssignments.join(', ')}
        WHERE id = ?`,
-      [
-        title,
-        slug,
-        summary,
-        description || '',
-        ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner',
-        Number(durationWeeks || 4),
-        imageUrl || '',
-        brochureUrl || '',
-        isFeatured ? 1 : 0,
-        isPublished === false ? 0 : 1,
-        issueCert ? 1 : 0,
-        id,
-      ]
+      updateValues
     );
     return res.status(200).json({ message: 'Course updated.' });
   } catch (error) {
