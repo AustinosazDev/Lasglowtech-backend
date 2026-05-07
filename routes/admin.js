@@ -467,6 +467,9 @@ router.post(
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded. Use field name "file" and a PDF.' });
     }
+    if (req.file.size === 0) {
+      return res.status(400).json({ error: 'Uploaded file is empty' });
+    }
     const baseUrl = (process.env.SITE_URL || process.env.API_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/uploads/files/${req.file.filename}` : `/uploads/files/${req.file.filename}`;
     return res.status(200).json({ message: 'Course note PDF uploaded.', url });
