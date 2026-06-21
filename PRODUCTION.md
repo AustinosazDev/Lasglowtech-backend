@@ -4,7 +4,7 @@
 
 - **SSH:** `root@185.113.249.113` (then `su - Austinosaz` to run the app as that user).
 - **Backend app directory:** `~/backend/Lasglowblog` (i.e. `/home/Austinosaz/backend/Lasglowblog`).
-- **API base URL (subdomain):** `https://api.pantherarestolounge.com` — set this as `REMOTE_SERVER_API` on the backend and as `VITE_API_URL` when building the frontend. See **Subdomain + SSL** below to create the subdomain and HTTPS.
+- **API base URL (subdomain):** `https://api.lasglowtech.com.ng.com` — set this as `REMOTE_SERVER_API` on the backend and as `VITE_API_URL` when building the frontend. See **Subdomain + SSL** below to create the subdomain and HTTPS.
 - All commands below (env, npm, pm2) are run from that directory.
 
 ### Subdomain + SSL (api.pantherarestolounge.com)
@@ -137,7 +137,7 @@ Alternative: full server setup (install MySQL, create DB/user, then import). One
 From the backend repo root (where `index.js` and `sql/` live):
 
 ```bash
-cd /home/Austinosaz/backend/Lasglowblog
+cd ~/backend/Lasglowblog
 ls scripts/   # should show setup-mysql-vps.sh; if missing, run: git pull origin main
 chmod +x scripts/setup-mysql-vps.sh
 ```
