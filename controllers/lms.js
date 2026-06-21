@@ -4,6 +4,7 @@ const db = require('../db');
 const { buildCertificateHtmlAsync } = require('../utils/documents');
 const { getPublicClientOrigin } = require('../utils/publicClientOrigin');
 const { sendCourseCertificateEmail } = require('../utils/notifications');
+const { syncCareerEnrollmentForUser } = require('../utils/careerEnrollment');
 
 /** Base URL for certificate assets (uploads). Prefer API_URL so the server that has the files is used. */
 const getUploadsBaseUrl = () => {
@@ -174,12 +175,29 @@ const mapCourse = (row) => ({
   durationWeeks: row.duration_weeks,
   imageUrl: row.image_url || '',
   brochureUrl: row.brochure_url || '',
+  scheduleStartDate: row.schedule_start_date
+    ? String(row.schedule_start_date).slice(0, 10)
+    : null,
   isFeatured: Boolean(row.is_featured),
   isPublished: Boolean(row.is_published),
   issueCertificateOnCompletion: row.issue_certificate_on_completion === undefined ? true : Boolean(row.issue_certificate_on_completion),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
+
+const formatDateOnly = (value) => {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const s = String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+};
+
+const formatTimeOnly = (value) => {
+  if (value == null || value === '') return null;
+  const s = String(value).trim();
+  if (/^\d{2}:\d{2}(:\d{2})?$/.test(s)) return s.slice(0, 5);
+  return s.slice(0, 20) || null;
+};
 
 const getPublishedCourses = async (req, res) => {
   try {
@@ -244,9 +262,12 @@ const getMyLearningDashboard = async (req, res) => {
   }
 
   try {
+    await syncCareerEnrollmentForUser(userId);
+
     const [enrollments] = await db.query(
       `SELECT e.id AS enrollment_id, e.status, e.progress_percent, e.created_at AS enrolled_at,
-              c.id AS course_id, c.title, c.slug, c.summary, c.level, c.duration_weeks, c.image_url
+              c.id AS course_id, c.title, c.slug, c.summary, c.level, c.duration_weeks, c.image_url,
+              c.schedule_start_date
        FROM lms_enrollments e
        INNER JOIN lms_courses c ON c.id = e.course_id
        WHERE e.user_id = ?
@@ -292,6 +313,7 @@ const getMyLearningDashboard = async (req, res) => {
         level: e.level,
         durationWeeks: e.duration_weeks,
         imageUrl: e.image_url || '',
+        scheduleStartDate: formatDateOnly(e.schedule_start_date),
       },
       totalModules: statsByEnrollment[e.enrollment_id]?.totalModules || 0,
       completedModules: statsByEnrollment[e.enrollment_id]?.completedModules || 0,
@@ -321,14 +343,19 @@ const getMyCourseModules = async (req, res) => {
 
     const enrollment = enRows[0];
     const [rows] = await db.query(
-      `SELECT m.id, m.title, m.module_order, m.week_num, m.duration_minutes, m.resource_url, m.slide_url, m.video_url, m.module_content, m.reference_links_json,
+      `SELECT m.id, m.title, m.module_order, m.week_num, m.scheduled_date, m.scheduled_time,
+              m.duration_minutes, m.resource_url, m.slide_url, m.video_url, m.module_content, m.reference_links_json,
               COALESCE(p.is_completed, 0) AS is_completed,
-              p.last_position_seconds, p.completed_at
+              p.last_position_seconds, p.completed_at,
+              CASE WHEN q.id IS NOT NULL THEN 1 ELSE 0 END AS has_quiz,
+              qs.id AS quiz_submission_id, qs.score AS quiz_score, qs.percent AS quiz_percent
        FROM lms_modules m
        LEFT JOIN lms_progress p ON p.module_id = m.id AND p.enrollment_id = ?
+       LEFT JOIN lms_module_quizzes q ON q.module_id = m.id
+       LEFT JOIN lms_quiz_submissions qs ON qs.enrollment_id = ? AND qs.module_id = m.id
        WHERE m.course_id = ?
        ORDER BY COALESCE(m.week_num, 99), m.module_order ASC, m.id ASC`,
-      [enrollment.id, enrollment.course_id]
+      [enrollment.id, enrollment.id, enrollment.course_id]
     );
 
     return res.status(200).json(
@@ -337,6 +364,8 @@ const getMyCourseModules = async (req, res) => {
         title: r.title,
         moduleOrder: r.module_order,
         week: r.week_num != null ? Number(r.week_num) : null,
+        scheduledDate: formatDateOnly(r.scheduled_date),
+        scheduledTime: formatTimeOnly(r.scheduled_time),
         durationMinutes: r.duration_minutes,
         resourceUrl: r.resource_url || '',
         slideUrl: r.slide_url || '',
@@ -346,6 +375,10 @@ const getMyCourseModules = async (req, res) => {
         isCompleted: Boolean(r.is_completed),
         lastPositionSeconds: Number(r.last_position_seconds || 0),
         completedAt: r.completed_at,
+        hasQuiz: Boolean(r.has_quiz),
+        quizSubmitted: Boolean(r.quiz_submission_id),
+        quizScore: r.quiz_submission_id != null ? Number(r.quiz_score || 0) : null,
+        quizPercent: r.quiz_submission_id != null ? Number(r.quiz_percent || 0) : null,
       }))
     );
   } catch (error) {
@@ -379,6 +412,21 @@ const updateModuleProgress = async (req, res) => {
     );
     if (!enRows.length) {
       return res.status(404).json({ error: 'Enrollment not found.' });
+    }
+
+    if (isCompleted) {
+      const quiz = await loadQuizByModuleId(moduleId, { includeCorrect: false });
+      if (quiz?.questions?.length) {
+        const [submissions] = await db.query(
+          'SELECT id FROM lms_quiz_submissions WHERE enrollment_id = ? AND module_id = ? LIMIT 1',
+          [enrollmentId, moduleId]
+        );
+        if (!submissions.length) {
+          return res.status(400).json({
+            error: 'Submit the module quiz before marking this module as complete.',
+          });
+        }
+      }
     }
 
     await db.query(
@@ -529,6 +577,7 @@ const createCourse = async (req, res) => {
     isFeatured,
     isPublished,
     issueCertificateOnCompletion,
+    scheduleStartDate,
   } = req.body;
   if (!title || !summary) {
     return res.status(400).json({ error: 'title and summary are required.' });
@@ -555,6 +604,7 @@ const createCourse = async (req, res) => {
       'is_featured',
       'is_published',
       'issue_certificate_on_completion',
+      'schedule_start_date',
     ];
     const insertValues = [
       title,
@@ -568,6 +618,7 @@ const createCourse = async (req, res) => {
       isFeatured ? 1 : 0,
       isPublished === false ? 0 : 1,
       issueCert ? 1 : 0,
+      formatDateOnly(scheduleStartDate),
     ];
     const placeholders = insertColumns.map(() => '?').join(', ');
     const [result] = await db.query(
@@ -595,6 +646,7 @@ const updateCourse = async (req, res) => {
     isFeatured,
     isPublished,
     issueCertificateOnCompletion,
+    scheduleStartDate,
   } = req.body;
   if (!title || !summary) {
     return res.status(400).json({ error: 'title and summary are required.' });
@@ -621,6 +673,7 @@ const updateCourse = async (req, res) => {
       'is_featured = ?',
       'is_published = ?',
       'issue_certificate_on_completion = ?',
+      'schedule_start_date = ?',
     ];
     const updateValues = [
       title,
@@ -634,6 +687,7 @@ const updateCourse = async (req, res) => {
       isFeatured ? 1 : 0,
       isPublished === false ? 0 : 1,
       issueCert ? 1 : 0,
+      formatDateOnly(scheduleStartDate),
       id,
     ];
     await db.query(
@@ -678,7 +732,7 @@ const getCourseModulesForAdmin = async (req, res) => {
 
 const createModule = async (req, res) => {
   const { courseId } = req.params;
-  const { title, moduleOrder, weekNum, durationMinutes, resourceUrl, slideUrl, videoUrl, moduleContent, referenceLinks, isPreview } = req.body;
+  const { title, moduleOrder, weekNum, scheduledDate, scheduledTime, durationMinutes, resourceUrl, slideUrl, videoUrl, moduleContent, referenceLinks, isPreview } = req.body;
   if (!title) {
     return res.status(400).json({ error: 'title is required.' });
   }
@@ -689,13 +743,15 @@ const createModule = async (req, res) => {
     }
     const week = weekNum != null && weekNum !== '' ? Number(weekNum) : null;
     const [result] = await db.query(
-      `INSERT INTO lms_modules (course_id, title, module_order, week_num, duration_minutes, resource_url, slide_url, video_url, module_content, reference_links_json, is_preview)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO lms_modules (course_id, title, module_order, week_num, scheduled_date, scheduled_time, duration_minutes, resource_url, slide_url, video_url, module_content, reference_links_json, is_preview)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         courseId,
         title,
         Number(moduleOrder || 1),
         week,
+        formatDateOnly(scheduledDate),
+        formatTimeOnly(scheduledTime),
         Number(durationMinutes || 0),
         resourceUrl || '',
         slideUrl || '',
@@ -713,7 +769,7 @@ const createModule = async (req, res) => {
 
 const updateModule = async (req, res) => {
   const { courseId, moduleId } = req.params;
-  const { title, moduleOrder, weekNum, durationMinutes, resourceUrl, slideUrl, videoUrl, moduleContent, referenceLinks, isPreview } = req.body;
+  const { title, moduleOrder, weekNum, scheduledDate, scheduledTime, durationMinutes, resourceUrl, slideUrl, videoUrl, moduleContent, referenceLinks, isPreview } = req.body;
 
   if (!title) {
     return res.status(400).json({ error: 'title is required.' });
@@ -727,12 +783,14 @@ const updateModule = async (req, res) => {
     const week = weekNum != null && weekNum !== '' ? Number(weekNum) : null;
     await db.query(
       `UPDATE lms_modules
-       SET title = ?, module_order = ?, week_num = ?, duration_minutes = ?, resource_url = ?, slide_url = ?, video_url = ?, module_content = ?, reference_links_json = ?, is_preview = ?
+       SET title = ?, module_order = ?, week_num = ?, scheduled_date = ?, scheduled_time = ?, duration_minutes = ?, resource_url = ?, slide_url = ?, video_url = ?, module_content = ?, reference_links_json = ?, is_preview = ?
        WHERE id = ? AND course_id = ?`,
       [
         title,
         Number(moduleOrder || 1),
         week,
+        formatDateOnly(scheduledDate),
+        formatTimeOnly(scheduledTime),
         Number(durationMinutes || 0),
         resourceUrl || '',
         slideUrl || '',
@@ -751,17 +809,289 @@ const updateModule = async (req, res) => {
   }
 };
 
+const deleteQuizForModule = async (moduleId) => {
+  const [quizzes] = await db.query('SELECT id FROM lms_module_quizzes WHERE module_id = ?', [moduleId]);
+  if (!quizzes.length) return;
+  const quizIds = quizzes.map((q) => q.id);
+  const [questions] = await db.query('SELECT id FROM lms_quiz_questions WHERE quiz_id IN (?)', [quizIds]);
+  const questionIds = questions.map((q) => q.id);
+  if (questionIds.length) {
+    await db.query('DELETE FROM lms_quiz_options WHERE question_id IN (?)', [questionIds]);
+    await db.query('DELETE FROM lms_quiz_questions WHERE id IN (?)', [questionIds]);
+  }
+  await db.query('DELETE FROM lms_module_quizzes WHERE id IN (?)', [quizIds]);
+};
+
+const deleteQuizSubmissionsForModule = async (moduleId) => {
+  await db.query('DELETE FROM lms_quiz_submissions WHERE module_id = ?', [moduleId]);
+};
+
+const assertModuleInCourse = async (courseId, moduleId) => {
+  const [rows] = await db.query('SELECT id FROM lms_modules WHERE id = ? AND course_id = ? LIMIT 1', [moduleId, courseId]);
+  return rows.length > 0;
+};
+
+const assertEnrollmentModuleAccess = async (userId, enrollmentId, moduleId) => {
+  const [rows] = await db.query(
+    `SELECT e.id
+     FROM lms_enrollments e
+     INNER JOIN lms_modules m ON m.course_id = e.course_id
+     WHERE e.id = ? AND e.user_id = ? AND m.id = ?
+     LIMIT 1`,
+    [enrollmentId, userId, moduleId]
+  );
+  return rows.length > 0;
+};
+
+const loadQuizByModuleId = async (moduleId, { includeCorrect = false } = {}) => {
+  const [quizRows] = await db.query(
+    'SELECT id, module_id, title FROM lms_module_quizzes WHERE module_id = ? LIMIT 1',
+    [moduleId]
+  );
+  if (!quizRows.length) return null;
+
+  const quiz = quizRows[0];
+  const [questionRows] = await db.query(
+    'SELECT id, question_text, sort_order FROM lms_quiz_questions WHERE quiz_id = ? ORDER BY sort_order ASC, id ASC',
+    [quiz.id]
+  );
+
+  const questions = [];
+  for (const question of questionRows) {
+    const [optionRows] = await db.query(
+      'SELECT id, option_text, is_correct, sort_order FROM lms_quiz_options WHERE question_id = ? ORDER BY sort_order ASC, id ASC',
+      [question.id]
+    );
+    questions.push({
+      id: question.id,
+      questionText: question.question_text,
+      sortOrder: question.sort_order,
+      options: optionRows.map((opt) => ({
+        id: opt.id,
+        optionText: opt.option_text,
+        sortOrder: opt.sort_order,
+        ...(includeCorrect ? { isCorrect: Boolean(opt.is_correct) } : {}),
+      })),
+    });
+  }
+
+  return {
+    id: quiz.id,
+    moduleId: quiz.module_id,
+    title: quiz.title,
+    questions,
+  };
+};
+
+const validateQuizPayload = (body) => {
+  const title = String(body?.title || 'Module quiz').trim() || 'Module quiz';
+  const questions = Array.isArray(body?.questions) ? body.questions : [];
+  if (!questions.length) {
+    return { error: 'Add at least one question.' };
+  }
+
+  const normalized = [];
+  for (let i = 0; i < questions.length; i += 1) {
+    const q = questions[i];
+    const questionText = String(q?.questionText || '').trim();
+    if (!questionText) {
+      return { error: `Question ${i + 1} text is required.` };
+    }
+    const options = Array.isArray(q?.options) ? q.options : [];
+    if (options.length < 2) {
+      return { error: `Question ${i + 1} needs at least two answer options.` };
+    }
+    const normalizedOptions = [];
+    let correctCount = 0;
+    for (let j = 0; j < options.length; j += 1) {
+      const optionText = String(options[j]?.optionText || '').trim();
+      if (!optionText) {
+        return { error: `Question ${i + 1}, option ${j + 1} text is required.` };
+      }
+      const isCorrect = Boolean(options[j]?.isCorrect);
+      if (isCorrect) correctCount += 1;
+      normalizedOptions.push({ optionText, isCorrect, sortOrder: j + 1 });
+    }
+    if (correctCount !== 1) {
+      return { error: `Question ${i + 1} must have exactly one correct answer.` };
+    }
+    normalized.push({ questionText, sortOrder: i + 1, options: normalizedOptions });
+  }
+
+  return { title, questions: normalized };
+};
+
 const deleteModule = async (req, res) => {
   const { courseId, moduleId } = req.params;
   try {
-    const [exists] = await db.query('SELECT id FROM lms_modules WHERE id = ? AND course_id = ? LIMIT 1', [moduleId, courseId]);
-    if (!exists.length) {
+    const ok = await assertModuleInCourse(courseId, moduleId);
+    if (!ok) {
       return res.status(404).json({ error: 'Module not found.' });
     }
 
     await db.query('DELETE FROM lms_progress WHERE module_id = ?', [moduleId]);
+    await deleteQuizSubmissionsForModule(moduleId);
+    await deleteQuizForModule(moduleId);
     await db.query('DELETE FROM lms_modules WHERE id = ? AND course_id = ?', [moduleId, courseId]);
     return res.status(200).json({ message: 'Module deleted.' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+const getAdminModuleQuiz = async (req, res) => {
+  const { courseId, moduleId } = req.params;
+  try {
+    const ok = await assertModuleInCourse(courseId, moduleId);
+    if (!ok) {
+      return res.status(404).json({ error: 'Module not found.' });
+    }
+    const quiz = await loadQuizByModuleId(moduleId, { includeCorrect: true });
+    return res.status(200).json(quiz || { moduleId: Number(moduleId), title: 'Module quiz', questions: [] });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+const saveAdminModuleQuiz = async (req, res) => {
+  const { courseId, moduleId } = req.params;
+  try {
+    const ok = await assertModuleInCourse(courseId, moduleId);
+    if (!ok) {
+      return res.status(404).json({ error: 'Module not found.' });
+    }
+
+    const validated = validateQuizPayload(req.body);
+    if (validated.error) {
+      return res.status(400).json({ error: validated.error });
+    }
+
+    await deleteQuizForModule(moduleId);
+    await deleteQuizSubmissionsForModule(moduleId);
+    const [result] = await db.query(
+      'INSERT INTO lms_module_quizzes (module_id, title) VALUES (?, ?)',
+      [moduleId, validated.title]
+    );
+    const quizId = result.insertId;
+
+    for (const question of validated.questions) {
+      const [qResult] = await db.query(
+        'INSERT INTO lms_quiz_questions (quiz_id, question_text, sort_order) VALUES (?, ?, ?)',
+        [quizId, question.questionText, question.sortOrder]
+      );
+      for (const option of question.options) {
+        await db.query(
+          'INSERT INTO lms_quiz_options (question_id, option_text, is_correct, sort_order) VALUES (?, ?, ?, ?)',
+          [qResult.insertId, option.optionText, option.isCorrect ? 1 : 0, option.sortOrder]
+        );
+      }
+    }
+
+    const quiz = await loadQuizByModuleId(moduleId, { includeCorrect: true });
+    return res.status(200).json({ message: 'Quiz saved.', quiz });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+const deleteAdminModuleQuiz = async (req, res) => {
+  const { courseId, moduleId } = req.params;
+  try {
+    const ok = await assertModuleInCourse(courseId, moduleId);
+    if (!ok) {
+      return res.status(404).json({ error: 'Module not found.' });
+    }
+    await deleteQuizForModule(moduleId);
+    await deleteQuizSubmissionsForModule(moduleId);
+    return res.status(200).json({ message: 'Quiz deleted.' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+const getMyModuleQuiz = async (req, res) => {
+  const userId = req.user?.id;
+  const { enrollmentId, moduleId } = req.params;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const ok = await assertEnrollmentModuleAccess(userId, enrollmentId, moduleId);
+    if (!ok) {
+      return res.status(404).json({ error: 'Module not found.' });
+    }
+    const quiz = await loadQuizByModuleId(moduleId, { includeCorrect: false });
+    if (!quiz || !quiz.questions.length) {
+      return res.status(200).json(null);
+    }
+    return res.status(200).json(quiz);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+const submitMyModuleQuiz = async (req, res) => {
+  const userId = req.user?.id;
+  const { enrollmentId, moduleId } = req.params;
+  const answers = req.body?.answers || {};
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const ok = await assertEnrollmentModuleAccess(userId, enrollmentId, moduleId);
+    if (!ok) {
+      return res.status(404).json({ error: 'Module not found.' });
+    }
+
+    const quiz = await loadQuizByModuleId(moduleId, { includeCorrect: true });
+    if (!quiz || !quiz.questions.length) {
+      return res.status(404).json({ error: 'No quiz for this module.' });
+    }
+
+    const results = [];
+    let score = 0;
+    for (const question of quiz.questions) {
+      const selectedOptionId = Number(answers[question.id] ?? answers[String(question.id)]);
+      if (!selectedOptionId) {
+        return res.status(400).json({ error: 'Answer every question before submitting the quiz.' });
+      }
+      const correctOption = question.options.find((o) => o.isCorrect);
+      const selectedOption = question.options.find((o) => o.id === selectedOptionId);
+      const isCorrect = Boolean(correctOption && selectedOptionId === correctOption.id);
+      if (isCorrect) score += 1;
+      results.push({
+        questionId: question.id,
+        questionText: question.questionText,
+        selectedOptionId: selectedOptionId || null,
+        selectedOptionText: selectedOption?.optionText || null,
+        correctOptionId: correctOption?.id || null,
+        correctOptionText: correctOption?.optionText || null,
+        isCorrect,
+      });
+    }
+
+    const total = quiz.questions.length;
+    const percent = total ? Math.round((score / total) * 100) : 0;
+
+    await db.query(
+      `INSERT INTO lms_quiz_submissions (enrollment_id, module_id, quiz_id, score, total, percent)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         quiz_id = VALUES(quiz_id),
+         score = VALUES(score),
+         total = VALUES(total),
+         percent = VALUES(percent),
+         submitted_at = CURRENT_TIMESTAMP`,
+      [enrollmentId, moduleId, quiz.id, score, total, percent]
+    );
+
+    return res.status(200).json({
+      score,
+      total,
+      percent,
+      submitted: true,
+      results,
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -994,6 +1324,7 @@ const adminDeleteEnrollment = async (req, res) => {
       return res.status(404).json({ error: 'Enrollment not found.' });
     }
     await db.query('DELETE FROM lms_progress WHERE enrollment_id = ?', [id]);
+    await db.query('DELETE FROM lms_quiz_submissions WHERE enrollment_id = ?', [id]);
     await db.query('DELETE FROM lms_enrollments WHERE id = ?', [id]);
     return res.status(200).json({ message: 'Enrollment removed. All progress and certificate data for this course enrollment have been deleted.' });
   } catch (error) {
@@ -1047,6 +1378,11 @@ module.exports = {
   createModule,
   updateModule,
   deleteModule,
+  getAdminModuleQuiz,
+  saveAdminModuleQuiz,
+  deleteAdminModuleQuiz,
+  getMyModuleQuiz,
+  submitMyModuleQuiz,
   getMyCertificateData,
   getMyCertificate,
   getAdminEnrollments,

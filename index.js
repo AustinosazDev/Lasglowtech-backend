@@ -33,7 +33,7 @@ const { port, allowedDomains } = config;
 
 const app = express();
 
-// 1️⃣ CORS & Middlewares
+// CORS & Middlewares
 app.use(cors({
   origin: allowedDomains,
   methods: ['GET','POST','PUT','DELETE'],
@@ -42,33 +42,20 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-// 2️⃣ Environment detection
+// 2 Environment detection
 const isDev = process.env.NODE_ENV !== 'production';
 
-// 3️⃣ Static serving of production uploads (CORS + CORP so SPA canvas / html2canvas can rasterize logos & seals)
-app.use(
-  '/uploads',
-  (req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-      res.setHeader('Access-Control-Max-Age', '86400');
-      return res.sendStatus(204);
-    }
-    next();
-  },
-  express.static(path.join(__dirname, 'uploads'))
-);
+// 3 Static serving of production uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 4️⃣ Utility to ensure a directory exists
+// 4 Utility to ensure a directory exists
 const ensureDir = (dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 };
 
-// 5️⃣ Multer storage (images only; files use fileUpload middleware)
+// 5 Multer storage (images only; files use fileUpload middleware)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const ext = file.originalname.toLowerCase().split('.').pop();
@@ -88,8 +75,8 @@ const storage = multer.diskStorage({
   }
 });
 
-// 6️⃣ Multer instance for image uploads
-// 6️⃣ Multer instance for image uploads
+// 6 Multer instance for image uploads
+
 const imageUpload = multer({
   storage,
   fileFilter: (req, file, cb) => {
@@ -99,7 +86,7 @@ const imageUpload = multer({
   }
 });
 
-// 7️⃣ Routes for uploadsn only
+// 7️Routes for uploadsn only
 app.post(
   '/upload/images',
   imageUpload.single('file'),

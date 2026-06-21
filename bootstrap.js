@@ -176,6 +176,21 @@ const ensureTables = async () => {
   `).catch(() => {});
 
   await db.query(`
+    ALTER TABLE lms_courses
+    ADD COLUMN IF NOT EXISTS schedule_start_date DATE NULL
+  `).catch(() => {});
+
+  await db.query(`
+    ALTER TABLE lms_modules
+    ADD COLUMN IF NOT EXISTS scheduled_date DATE NULL
+  `).catch(() => {});
+
+  await db.query(`
+    ALTER TABLE lms_modules
+    ADD COLUMN IF NOT EXISTS scheduled_time VARCHAR(20) NULL
+  `).catch(() => {});
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS lms_enrollments (
       id INT AUTO_INCREMENT PRIMARY KEY,
       user_id INT NOT NULL,
@@ -230,6 +245,52 @@ const ensureTables = async () => {
       completed_at DATETIME NULL,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uniq_enrollment_module (enrollment_id, module_id)
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS lms_module_quizzes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      module_id INT NOT NULL,
+      title VARCHAR(220) NOT NULL DEFAULT 'Module quiz',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_module_quiz (module_id)
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS lms_quiz_questions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      quiz_id INT NOT NULL,
+      question_text TEXT NOT NULL,
+      sort_order INT NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS lms_quiz_options (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      question_id INT NOT NULL,
+      option_text VARCHAR(500) NOT NULL,
+      is_correct TINYINT(1) NOT NULL DEFAULT 0,
+      sort_order INT NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS lms_quiz_submissions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      enrollment_id INT NOT NULL,
+      module_id INT NOT NULL,
+      quiz_id INT NOT NULL,
+      score INT NOT NULL DEFAULT 0,
+      total INT NOT NULL DEFAULT 0,
+      percent INT NOT NULL DEFAULT 0,
+      submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_enrollment_module_quiz_submission (enrollment_id, module_id)
     )
   `);
 

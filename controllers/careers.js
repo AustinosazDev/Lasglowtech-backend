@@ -2,6 +2,7 @@ const db = require('../db');
 const crypto = require('crypto');
 const { sendCareerApplicationEmails } = require('../utils/notifications');
 const { getAdminEmail } = require('../utils/admin');
+const { ensureUserEnrolledForAcceptedApplication } = require('../utils/careerEnrollment');
 
 const applyCareer = async (req, res) => {
   const userId = req.user?.id;
@@ -146,6 +147,11 @@ const updateCareerApplication = async (req, res) => {
   }
 
   try {
+    const [existing] = await db.query('SELECT * FROM career_applications WHERE id = ? LIMIT 1', [id]);
+    if (!existing.length) {
+      return res.status(404).json({ error: 'Application not found.' });
+    }
+
     await db.query(
       `UPDATE career_applications
        SET status = ?, admin_notes = ?, fee_amount = ?, payment_status = ?, follow_up_date = ?, cohort = ?
@@ -160,6 +166,14 @@ const updateCareerApplication = async (req, res) => {
         id,
       ]
     );
+
+    if (status === 'accepted') {
+      await ensureUserEnrolledForAcceptedApplication({
+        ...existing[0],
+        status: 'accepted',
+      });
+    }
+
     return res.status(200).json({ message: 'Application updated.' });
   } catch (error) {
     return res.status(500).json({ error: error.message });

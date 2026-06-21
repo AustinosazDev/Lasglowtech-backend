@@ -14,6 +14,11 @@ const {
   createModule,
   updateModule,
   deleteModule,
+  getAdminModuleQuiz,
+  saveAdminModuleQuiz,
+  deleteAdminModuleQuiz,
+  getMyModuleQuiz,
+  submitMyModuleQuiz,
   getMyCertificateData,
   getMyCertificate,
   getAdminEnrollments,
@@ -35,6 +40,8 @@ router.post('/enroll/:courseId', verifyToken, enrollCourse);
 router.get('/my/dashboard', verifyToken, getMyLearningDashboard);
 router.get('/my/enrollments/:enrollmentId/modules', verifyToken, getMyCourseModules);
 router.put('/my/enrollments/:enrollmentId/modules/:moduleId/progress', verifyToken, updateModuleProgress);
+router.get('/my/enrollments/:enrollmentId/modules/:moduleId/quiz', verifyToken, getMyModuleQuiz);
+router.post('/my/enrollments/:enrollmentId/modules/:moduleId/quiz/submit', verifyToken, submitMyModuleQuiz);
 router.get('/my/enrollments/:enrollmentId/certificate-data', verifyToken, getMyCertificateData);
 router.get('/my/enrollments/:enrollmentId/certificate', verifyToken, getMyCertificate);
 
@@ -46,6 +53,9 @@ router.get('/admin/courses/:courseId/modules', verifyAdmin, getCourseModulesForA
 router.post('/admin/courses/:courseId/modules', verifyAdmin, createModule);
 router.put('/admin/courses/:courseId/modules/:moduleId', verifyAdmin, updateModule);
 router.delete('/admin/courses/:courseId/modules/:moduleId', verifyAdmin, deleteModule);
+router.get('/admin/courses/:courseId/modules/:moduleId/quiz', verifyAdmin, getAdminModuleQuiz);
+router.put('/admin/courses/:courseId/modules/:moduleId/quiz', verifyAdmin, saveAdminModuleQuiz);
+router.delete('/admin/courses/:courseId/modules/:moduleId/quiz', verifyAdmin, deleteAdminModuleQuiz);
 
 router.get('/admin/enrollments', verifyAdmin, getAdminEnrollments);
 router.get('/admin/enrollments/:enrollmentId/certificate', verifyAdmin, adminPreviewCertificate);
