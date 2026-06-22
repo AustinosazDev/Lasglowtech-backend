@@ -1,5 +1,27 @@
 const db = require('./db');
 
+const hasColumn = async (tableName, columnName) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = ?
+         AND column_name = ?
+       LIMIT 1`,
+      [tableName, columnName]
+    );
+    return rows.length > 0;
+  } catch (_) {
+    return false;
+  }
+};
+
+const ensureColumn = async (tableName, columnName, definitionSql) => {
+  if (await hasColumn(tableName, columnName)) return;
+  await db.query(`ALTER TABLE ${tableName} ADD COLUMN ${definitionSql}`);
+};
+
 const ensureTables = async () => {
   await db.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -66,43 +88,28 @@ const ensureTables = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
-  await db.query(`
-    ALTER TABLE service_orders
-    ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(120) NULL
-  `);
-  await db.query(`
-    ALTER TABLE service_orders
-    ADD COLUMN IF NOT EXISTS invoice_sent_at DATETIME NULL
-  `);
-  await db.query(`
-    ALTER TABLE service_orders
-    ADD COLUMN IF NOT EXISTS email_notification_status ENUM('pending','sent','failed','skipped') NOT NULL DEFAULT 'pending'
-  `);
-  await db.query(`
-    ALTER TABLE service_orders
-    ADD COLUMN IF NOT EXISTS email_notification_error VARCHAR(500) NULL
-  `);
-  await db.query(`
-    ALTER TABLE service_orders
-    ADD COLUMN IF NOT EXISTS invoice_email_status ENUM('pending','sent','failed','skipped') NOT NULL DEFAULT 'pending'
-  `);
-  await db.query(`
-    ALTER TABLE service_orders
-    ADD COLUMN IF NOT EXISTS invoice_email_error VARCHAR(500) NULL
-  `);
+  await ensureColumn('service_orders', 'invoice_number', 'invoice_number VARCHAR(120) NULL');
+  await ensureColumn('service_orders', 'invoice_sent_at', 'invoice_sent_at DATETIME NULL');
+  await ensureColumn(
+    'service_orders',
+    'email_notification_status',
+    "email_notification_status ENUM('pending','sent','failed','skipped') NOT NULL DEFAULT 'pending'"
+  );
+  await ensureColumn('service_orders', 'email_notification_error', 'email_notification_error VARCHAR(500) NULL');
+  await ensureColumn(
+    'service_orders',
+    'invoice_email_status',
+    "invoice_email_status ENUM('pending','sent','failed','skipped') NOT NULL DEFAULT 'pending'"
+  );
+  await ensureColumn('service_orders', 'invoice_email_error', 'invoice_email_error VARCHAR(500) NULL');
 
-  await db.query(`
-    ALTER TABLE catalogues
-    ADD COLUMN IF NOT EXISTS package_tier ENUM('starter','standard','premium') NOT NULL DEFAULT 'standard'
-  `);
-  await db.query(`
-    ALTER TABLE catalogues
-    ADD COLUMN IF NOT EXISTS is_popular TINYINT(1) NOT NULL DEFAULT 0
-  `);
-  await db.query(`
-    ALTER TABLE catalogues
-    ADD COLUMN IF NOT EXISTS features_json TEXT NULL
-  `);
+  await ensureColumn(
+    'catalogues',
+    'package_tier',
+    "package_tier ENUM('starter','standard','premium') NOT NULL DEFAULT 'standard'"
+  );
+  await ensureColumn('catalogues', 'is_popular', 'is_popular TINYINT(1) NOT NULL DEFAULT 0');
+  await ensureColumn('catalogues', 'features_json', 'features_json TEXT NULL');
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS payment_transactions (
@@ -154,41 +161,15 @@ const ensureTables = async () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  await db.query(`
-    ALTER TABLE lms_modules
-    ADD COLUMN IF NOT EXISTS slide_url VARCHAR(500) NULL
-  `);
-  await db.query(`
-    ALTER TABLE lms_modules
-    ADD COLUMN IF NOT EXISTS video_url VARCHAR(500) NULL
-  `);
-  await db.query(`
-    ALTER TABLE lms_modules
-    ADD COLUMN IF NOT EXISTS module_content LONGTEXT NULL
-  `);
-  await db.query(`
-    ALTER TABLE lms_modules
-    ADD COLUMN IF NOT EXISTS reference_links_json LONGTEXT NULL
-  `);
-  await db.query(`
-    ALTER TABLE lms_modules
-    ADD COLUMN IF NOT EXISTS week_num INT NULL
-  `).catch(() => {});
+  await ensureColumn('lms_modules', 'slide_url', 'slide_url VARCHAR(500) NULL');
+  await ensureColumn('lms_modules', 'video_url', 'video_url VARCHAR(500) NULL');
+  await ensureColumn('lms_modules', 'module_content', 'module_content LONGTEXT NULL');
+  await ensureColumn('lms_modules', 'reference_links_json', 'reference_links_json LONGTEXT NULL');
+  await ensureColumn('lms_modules', 'week_num', 'week_num INT NULL');
 
-  await db.query(`
-    ALTER TABLE lms_courses
-    ADD COLUMN IF NOT EXISTS schedule_start_date DATE NULL
-  `).catch(() => {});
-
-  await db.query(`
-    ALTER TABLE lms_modules
-    ADD COLUMN IF NOT EXISTS scheduled_date DATE NULL
-  `).catch(() => {});
-
-  await db.query(`
-    ALTER TABLE lms_modules
-    ADD COLUMN IF NOT EXISTS scheduled_time VARCHAR(20) NULL
-  `).catch(() => {});
+  await ensureColumn('lms_courses', 'schedule_start_date', 'schedule_start_date DATE NULL');
+  await ensureColumn('lms_modules', 'scheduled_date', 'scheduled_date DATE NULL');
+  await ensureColumn('lms_modules', 'scheduled_time', 'scheduled_time VARCHAR(20) NULL');
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS lms_enrollments (
@@ -204,36 +185,22 @@ const ensureTables = async () => {
       UNIQUE KEY uniq_user_course (user_id, course_id)
     )
   `);
-  await db.query(`
-    ALTER TABLE lms_enrollments
-    ADD COLUMN IF NOT EXISTS certificate_code VARCHAR(120) NULL
-  `);
-  await db.query(`
-    ALTER TABLE lms_enrollments
-    ADD COLUMN IF NOT EXISTS certificate_sent_at DATETIME NULL
-  `);
-  await db.query(`
-    ALTER TABLE lms_enrollments
-    ADD COLUMN IF NOT EXISTS certificate_message TEXT NULL
-  `).catch(() => {});
-  await db.query(`
-    ALTER TABLE lms_enrollments
-    ADD COLUMN IF NOT EXISTS certificate_signed_at DATETIME NULL
-  `).catch(() => {});
-  await db.query(`
-    ALTER TABLE lms_enrollments
-    ADD COLUMN IF NOT EXISTS certificate_signature_label VARCHAR(120) NULL
-  `).catch(() => {});
+  await ensureColumn('lms_enrollments', 'certificate_code', 'certificate_code VARCHAR(120) NULL');
+  await ensureColumn('lms_enrollments', 'certificate_sent_at', 'certificate_sent_at DATETIME NULL');
+  await ensureColumn('lms_enrollments', 'certificate_message', 'certificate_message TEXT NULL');
+  await ensureColumn('lms_enrollments', 'certificate_signed_at', 'certificate_signed_at DATETIME NULL');
+  await ensureColumn(
+    'lms_enrollments',
+    'certificate_signature_label',
+    'certificate_signature_label VARCHAR(120) NULL'
+  );
 
-  await db.query(`
-    ALTER TABLE lms_courses
-    ADD COLUMN IF NOT EXISTS brochure_url VARCHAR(500) NULL AFTER image_url
-  `).catch(() => {});
-
-  await db.query(`
-    ALTER TABLE lms_courses
-    ADD COLUMN IF NOT EXISTS issue_certificate_on_completion TINYINT(1) NOT NULL DEFAULT 1
-  `).catch(() => {});
+  await ensureColumn('lms_courses', 'brochure_url', 'brochure_url VARCHAR(500) NULL');
+  await ensureColumn(
+    'lms_courses',
+    'issue_certificate_on_completion',
+    'issue_certificate_on_completion TINYINT(1) NOT NULL DEFAULT 1'
+  );
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS lms_progress (
@@ -356,30 +323,16 @@ const ensureTables = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
-  await db.query(`
-    ALTER TABLE career_applications
-    ADD COLUMN IF NOT EXISTS user_id INT NULL
-  `);
-  await db.query(`
-    ALTER TABLE career_applications
-    ADD COLUMN IF NOT EXISTS access_token VARCHAR(120) NULL
-  `);
-  await db.query(`
-    ALTER TABLE career_applications
-    ADD COLUMN IF NOT EXISTS fee_amount DECIMAL(12,2) NOT NULL DEFAULT 0
-  `);
-  await db.query(`
-    ALTER TABLE career_applications
-    ADD COLUMN IF NOT EXISTS payment_status ENUM('unpaid','part_paid','paid','waived') NOT NULL DEFAULT 'unpaid'
-  `);
-  await db.query(`
-    ALTER TABLE career_applications
-    ADD COLUMN IF NOT EXISTS follow_up_date DATE NULL
-  `);
-  await db.query(`
-    ALTER TABLE career_applications
-    ADD COLUMN IF NOT EXISTS cohort VARCHAR(120) NULL
-  `);
+  await ensureColumn('career_applications', 'user_id', 'user_id INT NULL');
+  await ensureColumn('career_applications', 'access_token', 'access_token VARCHAR(120) NULL');
+  await ensureColumn('career_applications', 'fee_amount', 'fee_amount DECIMAL(12,2) NOT NULL DEFAULT 0');
+  await ensureColumn(
+    'career_applications',
+    'payment_status',
+    "payment_status ENUM('unpaid','part_paid','paid','waived') NOT NULL DEFAULT 'unpaid'"
+  );
+  await ensureColumn('career_applications', 'follow_up_date', 'follow_up_date DATE NULL');
+  await ensureColumn('career_applications', 'cohort', 'cohort VARCHAR(120) NULL');
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS certificate_settings (
