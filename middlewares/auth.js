@@ -29,7 +29,27 @@ const verifyAdmin = (req, res, next) => {
   });
 };
 
+const optionalVerifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const payload = jwt.verify(token, jwtSecret);
+    req.user = payload;
+    return next();
+  } catch {
+    req.user = null;
+    return next();
+  }
+};
+
 module.exports = {
   verifyToken,
   verifyAdmin,
+  optionalVerifyToken,
 };

@@ -251,6 +251,46 @@ const sendPaymentSuccessEmails = async ({ adminEmail, customerEmail, order }) =>
   return outcome;
 };
 
+const sendDigitalDeliveryEmail = async ({ customerEmail, customerName, serviceName, externalUrl }) => {
+  if (!customerEmail || !externalUrl) {
+    return { status: 'skipped', error: 'Missing recipient or delivery URL.' };
+  }
+
+  const safe = {
+    customerName: escapeHtml(customerName),
+    serviceName: escapeHtml(serviceName),
+    externalUrl: escapeHtml(externalUrl),
+  };
+
+  const html = renderEmailShell({
+    title: 'Your Purchase Is Ready',
+    subtitle: 'Access your digital product',
+    contentHtml: `
+      <p style="margin:0 0 12px;font-size:14px;">Hello ${safe.customerName},</p>
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.6;">
+        Thank you for your purchase of <strong>${safe.serviceName}</strong>. Your access link is ready.
+      </p>
+      <p style="margin:0 0 16px;">
+        <a href="${safe.externalUrl}" style="display:inline-block;background:#ed6e00;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:600;">
+          Access your product
+        </a>
+      </p>
+      <p style="margin:0;font-size:12px;color:#6b7280;word-break:break-all;">${safe.externalUrl}</p>
+    `,
+  });
+
+  try {
+    await sendEmail({
+      to: customerEmail,
+      subject: `Access link: ${serviceName} - Lasglowtech`,
+      html,
+    });
+    return { status: 'sent', error: '' };
+  } catch (error) {
+    return { status: 'failed', error: String(error?.message || error) };
+  }
+};
+
 const sendBulkEmail = async ({ recipients, subject, messageHtml, attachments = [] }) => {
   const uniqueRecipients = [...new Set((recipients || []).map((item) => String(item || '').trim().toLowerCase()).filter(Boolean))];
   const settled = await Promise.allSettled(
@@ -386,6 +426,54 @@ const sendCourseCertificateEmail = async ({ to, learnerName, courseTitle, certif
   }
 };
 
+const sendDigitalFileDeliveryEmail = async ({
+  customerEmail,
+  customerName,
+  serviceName,
+  downloadPageUrl,
+  deliverableFileName = '',
+}) => {
+  if (!customerEmail || !downloadPageUrl) {
+    return { status: 'skipped', error: 'Missing recipient or download URL.' };
+  }
+
+  const safe = {
+    customerName: escapeHtml(customerName),
+    serviceName: escapeHtml(serviceName),
+    downloadPageUrl: escapeHtml(downloadPageUrl),
+    deliverableFileName: escapeHtml(deliverableFileName || 'your file'),
+  };
+
+  const html = renderEmailShell({
+    title: 'Your Download Is Ready',
+    subtitle: 'Access your digital purchase',
+    contentHtml: `
+      <p style="margin:0 0 12px;font-size:14px;">Hello ${safe.customerName},</p>
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.6;">
+        Thank you for your purchase of <strong>${safe.serviceName}</strong>. Your file is ready to download.
+      </p>
+      <p style="margin:0 0 16px;">
+        <a href="${safe.downloadPageUrl}" style="display:inline-block;background:#ed6e00;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:600;">
+          Download ${safe.deliverableFileName}
+        </a>
+      </p>
+      <p style="margin:0;font-size:12px;color:#6b7280;word-break:break-all;">${safe.downloadPageUrl}</p>
+      <p style="margin:12px 0 0;font-size:12px;color:#6b7280;">Save this link — you can use it anytime to download your purchase again.</p>
+    `,
+  });
+
+  try {
+    await sendEmail({
+      to: customerEmail,
+      subject: `Download ready: ${serviceName} - Lasglowtech`,
+      html,
+    });
+    return { status: 'sent', error: '' };
+  } catch (error) {
+    return { status: 'failed', error: String(error?.message || error) };
+  }
+};
+
 module.exports = {
   renderEmailShell,
   sendEmail,
@@ -393,6 +481,8 @@ module.exports = {
   sendCareerApplicationEmails,
   sendOrderInitiatedEmails,
   sendPaymentSuccessEmails,
+  sendDigitalDeliveryEmail,
+  sendDigitalFileDeliveryEmail,
   sendBulkEmail,
   sendInvoiceEmail,
   sendCourseCertificateEmail,

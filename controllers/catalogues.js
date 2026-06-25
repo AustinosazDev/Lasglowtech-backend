@@ -1,5 +1,6 @@
 const db = require('../db');
 const config = require('../config');
+const { mapDeliveryMeta } = require('../utils/delivery');
 
 const localServerApi = process.env.LOCAL_SERVER_API || `http://localhost:${config.port || 5000}`;
 const remoteServerApi = config.remote_server_api || '';
@@ -28,32 +29,50 @@ const buildImageUrl = (imagePath = '') => {
   return `${isLocal ? localServerApi : remoteServerApi}${normalized}`;
 };
 
-const mapCatalogue = (row) => ({
-  id: row.id,
-  title: row.title,
-  slug: row.slug,
-  summary: row.summary,
-  description: row.description,
-  imageUrl: buildImageUrl(row.image_url),
-  price: Number(row.price),
-  packageTier: row.package_tier || 'standard',
-  isPopular: Boolean(row.is_popular),
-  features: (() => {
-    try {
-      const parsed = JSON.parse(row.features_json || '[]');
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (_) {
-      return [];
-    }
-  })(),
-  paymentType: row.payment_type,
-  currency: row.currency,
-  isPaymentEnabled: Boolean(row.is_payment_enabled),
-  isPublished: Boolean(row.is_published),
-  sortOrder: row.sort_order,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
+const mapCatalogue = (row, { includeDeliverableDetails = false } = {}) => {
+  const delivery = mapDeliveryMeta(row);
+  const base = {
+    id: row.id,
+    title: row.title,
+    slug: row.slug,
+    summary: row.summary,
+    description: row.description,
+    imageUrl: buildImageUrl(row.image_url),
+    price: Number(row.price),
+    packageTier: row.package_tier || 'standard',
+    isPopular: Boolean(row.is_popular),
+    features: (() => {
+      try {
+        const parsed = JSON.parse(row.features_json || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
+    })(),
+    paymentType: row.payment_type,
+    currency: row.currency,
+    isPaymentEnabled: Boolean(row.is_payment_enabled),
+    isPublished: Boolean(row.is_published),
+    sortOrder: row.sort_order,
+    deliveryType: delivery.deliveryType,
+    isDigitalProduct: delivery.isDigitalProduct,
+    hasInstantDownload: delivery.hasInstantDownload,
+    hasExternalDelivery: delivery.hasExternalDelivery,
+    deliverableFileName: delivery.deliverableFileName,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+
+  if (includeDeliverableDetails) {
+    return {
+      ...base,
+      deliverableFileUrl: row.deliverable_file_url || '',
+      deliverableExternalUrl: row.deliverable_external_url || '',
+    };
+  }
+
+  return base;
+};
 
 const getCatalogues = async (req, res) => {
   try {
@@ -62,7 +81,7 @@ const getCatalogues = async (req, res) => {
        WHERE is_published = 1
        ORDER BY sort_order ASC, id DESC`
     );
-    return res.status(200).json(rows.map(mapCatalogue));
+    return res.status(200).json(rows.map((row) => mapCatalogue(row)));
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -71,13 +90,13 @@ const getCatalogues = async (req, res) => {
 const getCataloguePreview = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, title, slug, summary, image_url, price, package_tier, is_popular, features_json, payment_type, currency, is_payment_enabled
+      `SELECT *
        FROM catalogues
        WHERE is_published = 1
        ORDER BY sort_order ASC, id DESC
        LIMIT 3`
     );
-    return res.status(200).json(rows.map(mapCatalogue));
+    return res.status(200).json(rows.map((row) => mapCatalogue(row)));
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -104,10 +123,15 @@ const getCatalogueBySlug = async (req, res) => {
 const getAdminCatalogues = async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM catalogues ORDER BY id DESC');
-    return res.status(200).json(rows.map(mapCatalogue));
+    return res.status(200).json(rows.map((row) => mapCatalogue(row, { includeDeliverableDetails: true })));
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
+};
+
+const normalizeDeliveryType = (value) => {
+  const allowed = ['service', 'digital_file', 'digital_link'];
+  return allowed.includes(value) ? value : 'service';
 };
 
 const createCatalogue = async (req, res) => {
@@ -125,6 +149,10 @@ const createCatalogue = async (req, res) => {
     isPaymentEnabled,
     isPublished,
     sortOrder,
+    deliveryType,
+    deliverableFileUrl,
+    deliverableFileName,
+    deliverableExternalUrl,
   } = req.body;
 
   if (!title || !summary) {
@@ -141,8 +169,9 @@ const createCatalogue = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO catalogues
-      (title, slug, summary, description, image_url, price, package_tier, is_popular, features_json, payment_type, currency, is_payment_enabled, is_published, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (title, slug, summary, description, image_url, price, package_tier, is_popular, features_json, payment_type, currency, is_payment_enabled, is_published, sort_order,
+       delivery_type, deliverable_file_url, deliverable_file_name, deliverable_external_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title,
         slug,
@@ -158,6 +187,10 @@ const createCatalogue = async (req, res) => {
         isPaymentEnabled ? 1 : 0,
         isPublished ? 1 : 0,
         Number(sortOrder || 0),
+        normalizeDeliveryType(deliveryType),
+        deliverableFileUrl || '',
+        deliverableFileName || '',
+        deliverableExternalUrl || '',
       ]
     );
 
@@ -183,6 +216,10 @@ const updateCatalogue = async (req, res) => {
     isPaymentEnabled,
     isPublished,
     sortOrder,
+    deliveryType,
+    deliverableFileUrl,
+    deliverableFileName,
+    deliverableExternalUrl,
   } = req.body;
 
   if (!title || !summary) {
@@ -200,7 +237,8 @@ const updateCatalogue = async (req, res) => {
     await db.query(
       `UPDATE catalogues
        SET title = ?, slug = ?, summary = ?, description = ?, image_url = ?, price = ?, package_tier = ?, is_popular = ?, features_json = ?, payment_type = ?,
-           currency = ?, is_payment_enabled = ?, is_published = ?, sort_order = ?
+           currency = ?, is_payment_enabled = ?, is_published = ?, sort_order = ?,
+           delivery_type = ?, deliverable_file_url = ?, deliverable_file_name = ?, deliverable_external_url = ?
        WHERE id = ?`,
       [
         title,
@@ -217,6 +255,10 @@ const updateCatalogue = async (req, res) => {
         isPaymentEnabled ? 1 : 0,
         isPublished ? 1 : 0,
         Number(sortOrder || 0),
+        normalizeDeliveryType(deliveryType),
+        deliverableFileUrl || '',
+        deliverableFileName || '',
+        deliverableExternalUrl || '',
         id,
       ]
     );

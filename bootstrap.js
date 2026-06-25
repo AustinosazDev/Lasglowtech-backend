@@ -110,6 +110,17 @@ const ensureTables = async () => {
   );
   await ensureColumn('catalogues', 'is_popular', 'is_popular TINYINT(1) NOT NULL DEFAULT 0');
   await ensureColumn('catalogues', 'features_json', 'features_json TEXT NULL');
+  await ensureColumn(
+    'catalogues',
+    'delivery_type',
+    "delivery_type ENUM('service','digital_file','digital_link') NOT NULL DEFAULT 'service'"
+  );
+  await ensureColumn('catalogues', 'deliverable_file_url', 'deliverable_file_url VARCHAR(500) NULL');
+  await ensureColumn('catalogues', 'deliverable_file_name', 'deliverable_file_name VARCHAR(255) NULL');
+  await ensureColumn('catalogues', 'deliverable_external_url', 'deliverable_external_url VARCHAR(500) NULL');
+  await ensureColumn('service_orders', 'download_token', 'download_token VARCHAR(64) NULL');
+  await ensureColumn('service_orders', 'delivered_at', 'delivered_at DATETIME NULL');
+  await ensureColumn('service_orders', 'catalogue_id', 'catalogue_id INT NULL');
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS payment_transactions (

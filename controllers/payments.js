@@ -1,13 +1,25 @@
 const axios = require('axios');
+const path = require('path');
+const fs = require('fs');
 const config = require('../config');
 const db = require('../db');
 const {
   sendOrderInitiatedEmails,
   sendPaymentSuccessEmails,
   sendInvoiceEmail,
+  sendDigitalDeliveryEmail,
+  sendDigitalFileDeliveryEmail,
 } = require('../utils/notifications');
 const { buildInvoiceHtml } = require('../utils/documents');
 const { getAdminEmail } = require('../utils/admin');
+const {
+  generateDownloadToken,
+  getDownloadPageUrl,
+  getApiDownloadUrl,
+  isDigitalDelivery,
+  getStoredFilePath,
+  mapDeliveryMeta,
+} = require('../utils/delivery');
 
 const mapPackage = (row) => ({
   id: row.id,
@@ -16,6 +28,7 @@ const mapPackage = (row) => ({
   amount: Number(row.price),
   currency: row.currency || 'NGN',
   paymentType: row.payment_type || 'full',
+  ...mapDeliveryMeta(row),
 });
 
 const getPackages = async (req, res) => {
@@ -36,7 +49,7 @@ const getPackageBySlug = async (req, res) => {
   const { serviceSlug } = req.params;
   try {
     const [rows] = await db.query(
-      `SELECT id, slug, title, price, currency, payment_type
+      `SELECT *
        FROM catalogues
        WHERE slug = ? AND is_payment_enabled = 1 AND is_published = 1
        LIMIT 1`,
@@ -69,7 +82,7 @@ const initializePayment = async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      `SELECT id, slug, title, price, currency, payment_type
+      `SELECT *
        FROM catalogues
        WHERE slug = ? AND is_payment_enabled = 1 AND is_published = 1
        LIMIT 1`,
@@ -171,6 +184,106 @@ const initializePayment = async (req, res) => {
   }
 };
 
+const buildDeliveryPayload = (order, catalogue) => {
+  if (!order || order.status !== 'paid' || !catalogue) return null;
+
+  const delivery = mapDeliveryMeta(catalogue);
+  if (!delivery.isDigitalProduct) {
+    return { deliveryType: 'service', isDigitalProduct: false };
+  }
+
+  const token = order.download_token;
+  const base = {
+    deliveryType: delivery.deliveryType,
+    isDigitalProduct: true,
+    serviceName: order.service_name,
+    orderId: order.id,
+    downloadToken: token,
+    deliverableFileName: catalogue.deliverable_file_name || '',
+  };
+
+  if (delivery.deliveryType === 'digital_file' && catalogue.deliverable_file_url) {
+    return {
+      ...base,
+      downloadUrl: token ? getApiDownloadUrl(token) : '',
+      accessUrl: token ? getDownloadPageUrl(token) : '',
+    };
+  }
+
+  if (delivery.deliveryType === 'digital_link' && catalogue.deliverable_external_url) {
+    return {
+      ...base,
+      externalUrl: catalogue.deliverable_external_url,
+      accessUrl: catalogue.deliverable_external_url,
+    };
+  }
+
+  return { ...base, pendingSetup: true };
+};
+
+const fulfillDigitalOrder = async (orderId) => {
+  const [[order]] = await db.query(
+    `SELECT id, user_id, catalogue_id, service_name, customer_name, email, status, download_token
+     FROM service_orders
+     WHERE id = ?
+     LIMIT 1`,
+    [orderId]
+  );
+  if (!order || order.status !== 'paid') return null;
+
+  let catalogue = null;
+  if (order.catalogue_id) {
+    const [[row]] = await db.query('SELECT * FROM catalogues WHERE id = ? LIMIT 1', [order.catalogue_id]);
+    catalogue = row || null;
+  }
+
+  if (!catalogue || !isDigitalDelivery(catalogue.delivery_type)) {
+    return null;
+  }
+
+  let downloadToken = order.download_token;
+  const wasAlreadyFulfilled = Boolean(downloadToken);
+  if (!downloadToken) {
+    downloadToken = generateDownloadToken();
+    await db.query(
+      'UPDATE service_orders SET download_token = ?, delivered_at = NOW() WHERE id = ?',
+      [downloadToken, order.id]
+    );
+  }
+
+  const delivery = mapDeliveryMeta(catalogue);
+  const isGuestOrder = !order.user_id;
+
+  if (!wasAlreadyFulfilled && delivery.deliveryType === 'digital_link' && catalogue.deliverable_external_url) {
+    await sendDigitalDeliveryEmail({
+      customerEmail: order.email,
+      customerName: order.customer_name,
+      serviceName: order.service_name,
+      externalUrl: catalogue.deliverable_external_url,
+    });
+  }
+
+  if (
+    !wasAlreadyFulfilled &&
+    isGuestOrder &&
+    delivery.deliveryType === 'digital_file' &&
+    catalogue.deliverable_file_url
+  ) {
+    await sendDigitalFileDeliveryEmail({
+      customerEmail: order.email,
+      customerName: order.customer_name,
+      serviceName: order.service_name,
+      downloadPageUrl: getDownloadPageUrl(downloadToken),
+      deliverableFileName: catalogue.deliverable_file_name,
+    });
+  }
+
+  return buildDeliveryPayload(
+    { ...order, download_token: downloadToken, status: 'paid' },
+    catalogue
+  );
+};
+
 const persistVerification = async (verificationData) => {
   const txRef = verificationData?.tx_ref;
   if (!txRef) return;
@@ -184,7 +297,7 @@ const persistVerification = async (verificationData) => {
   const flutterwaveRef = verificationData?.flw_ref || null;
 
   const [[existingOrder]] = await db.query(
-    `SELECT id, service_name, customer_name, email, amount, currency, status, paid_at, tx_ref, invoice_number, invoice_sent_at
+    `SELECT id, catalogue_id, service_name, customer_name, email, amount, currency, status, paid_at, tx_ref, invoice_number, invoice_sent_at, download_token
      FROM service_orders
      WHERE tx_ref = ?
      LIMIT 1`,
@@ -304,6 +417,12 @@ const persistVerification = async (verificationData) => {
         ]
       );
     }
+
+    try {
+      await fulfillDigitalOrder(existingOrder.id);
+    } catch (deliveryError) {
+      console.error('Digital delivery error:', deliveryError.message);
+    }
   }
 };
 
@@ -348,13 +467,33 @@ const verifyPayment = async (req, res) => {
     }
 
     const data = response.data?.data || null;
+    let delivery = null;
     if (data) {
       await persistVerification(data);
+      const lookupId = data.meta?.orderId;
+      if (data.status === 'successful') {
+        if (lookupId) {
+          delivery = await fulfillDigitalOrder(lookupId);
+        } else if (txRef) {
+          const [[paidOrder]] = await db.query(
+            `SELECT o.id, o.service_name, o.status, o.download_token, c.delivery_type, c.deliverable_file_url, c.deliverable_file_name, c.deliverable_external_url
+             FROM service_orders o
+             LEFT JOIN catalogues c ON c.id = o.catalogue_id
+             WHERE o.tx_ref = ? AND o.status = ?
+             LIMIT 1`,
+            [txRef, 'paid']
+          );
+          if (paidOrder) {
+            delivery = buildDeliveryPayload(paidOrder, paidOrder);
+          }
+        }
+      }
     }
 
     return res.status(200).json({
       message: 'Payment verification completed.',
       data,
+      delivery,
       needsManualReview: false,
     });
   } catch (error) {
@@ -510,13 +649,31 @@ const getMyOrders = async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      `SELECT id, service_name, amount, currency, payment_type, status, tx_ref, paid_at, created_at, invoice_number, invoice_sent_at
-       FROM service_orders
-       WHERE user_id = ?
-       ORDER BY id DESC`,
+      `SELECT o.id, o.service_name, o.amount, o.currency, o.payment_type, o.status, o.tx_ref, o.paid_at, o.created_at,
+              o.invoice_number, o.invoice_sent_at, o.download_token,
+              c.delivery_type, c.deliverable_file_url, c.deliverable_file_name, c.deliverable_external_url
+       FROM service_orders o
+       LEFT JOIN catalogues c ON c.id = o.catalogue_id
+       WHERE o.user_id = ?
+       ORDER BY o.id DESC`,
       [userId]
     );
-    return res.status(200).json(rows);
+    return res.status(200).json(
+      rows.map((row) => ({
+        id: row.id,
+        service_name: row.service_name,
+        amount: row.amount,
+        currency: row.currency,
+        payment_type: row.payment_type,
+        status: row.status,
+        tx_ref: row.tx_ref,
+        paid_at: row.paid_at,
+        created_at: row.created_at,
+        invoice_number: row.invoice_number,
+        invoice_sent_at: row.invoice_sent_at,
+        delivery: buildDeliveryPayload(row, row),
+      }))
+    );
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -569,6 +726,112 @@ const getMyOrderInvoice = async (req, res) => {
   }
 };
 
+const getDeliveryByToken = async (req, res) => {
+  const { token } = req.params;
+  if (!token) {
+    return res.status(400).json({ error: 'Download token is required.' });
+  }
+
+  try {
+    const [[row]] = await db.query(
+      `SELECT o.id, o.service_name, o.status, o.download_token, c.delivery_type, c.deliverable_file_url, c.deliverable_file_name, c.deliverable_external_url
+       FROM service_orders o
+       LEFT JOIN catalogues c ON c.id = o.catalogue_id
+       WHERE o.download_token = ?
+       LIMIT 1`,
+      [token]
+    );
+
+    if (!row || row.status !== 'paid') {
+      return res.status(404).json({ error: 'Download not found or payment not confirmed.' });
+    }
+
+    return res.status(200).json(buildDeliveryPayload(row, row));
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+const downloadDeliverable = async (req, res) => {
+  const { token } = req.params;
+  if (!token) {
+    return res.status(400).json({ error: 'Download token is required.' });
+  }
+
+  try {
+    const [[row]] = await db.query(
+      `SELECT o.id, o.service_name, o.status, o.download_token, c.delivery_type, c.deliverable_file_url, c.deliverable_file_name
+       FROM service_orders o
+       LEFT JOIN catalogues c ON c.id = o.catalogue_id
+       WHERE o.download_token = ?
+       LIMIT 1`,
+      [token]
+    );
+
+    if (!row || row.status !== 'paid') {
+      return res.status(404).json({ error: 'Download not available.' });
+    }
+
+    if (row.delivery_type !== 'digital_file' || !row.deliverable_file_url) {
+      return res.status(400).json({ error: 'This order does not include a hosted file download.' });
+    }
+
+    const filePath = getStoredFilePath(row.deliverable_file_url);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found on server.' });
+    }
+
+    const downloadName = row.deliverable_file_name || path.basename(filePath);
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadName.replace(/"/g, '')}"`);
+    return res.sendFile(filePath);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+const getMyOrderDelivery = async (req, res) => {
+  const userId = req.user?.id;
+  const { orderId } = req.params;
+  if (!userId || !orderId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const [[row]] = await db.query(
+      `SELECT o.id, o.service_name, o.status, o.download_token, c.delivery_type, c.deliverable_file_url, c.deliverable_file_name, c.deliverable_external_url
+       FROM service_orders o
+       LEFT JOIN catalogues c ON c.id = o.catalogue_id
+       WHERE o.id = ? AND o.user_id = ?
+       LIMIT 1`,
+      [orderId, userId]
+    );
+
+    if (!row) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+    if (row.status !== 'paid') {
+      return res.status(400).json({ error: 'Delivery is available only for paid orders.' });
+    }
+
+    if (isDigitalDelivery(row.delivery_type) && !row.download_token) {
+      await fulfillDigitalOrder(row.id);
+      const [[updated]] = await db.query(
+        `SELECT o.id, o.service_name, o.status, o.download_token, c.delivery_type, c.deliverable_file_url, c.deliverable_file_name, c.deliverable_external_url
+         FROM service_orders o
+         LEFT JOIN catalogues c ON c.id = o.catalogue_id
+         WHERE o.id = ? AND o.user_id = ?
+         LIMIT 1`,
+        [orderId, userId]
+      );
+      return res.status(200).json(buildDeliveryPayload(updated, updated));
+    }
+
+    return res.status(200).json(buildDeliveryPayload(row, row));
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getPackages,
   getPackageBySlug,
@@ -580,4 +843,7 @@ module.exports = {
   getMyOrders,
   getMyOrderInvoice,
   reverifyAdminOrder,
+  getDeliveryByToken,
+  downloadDeliverable,
+  getMyOrderDelivery,
 };

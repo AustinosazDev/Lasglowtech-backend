@@ -77,6 +77,28 @@ const certificateSignatureUpload = multer({
 });
 
 const filesDir = path.join(uploadsDir, 'files');
+const { ensureDeliverablesDir, DELIVERABLES_DIR } = require('../utils/delivery');
+const deliverableUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      ensureDeliverablesDir();
+      cb(null, DELIVERABLES_DIR);
+    },
+    filename: (req, file, cb) => {
+      const ext = (path.extname(file.originalname) || '').toLowerCase();
+      const safeBase = path
+        .basename(file.originalname, ext)
+        .replace(/[^a-zA-Z0-9-_]+/g, '-')
+        .slice(0, 80);
+      cb(null, `catalogue-${Date.now()}-${safeBase || 'file'}${ext || '.pdf'}`);
+    },
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = /\.(pdf|zip|epub|docx?)$/i.test(file.originalname);
+    cb(null, allowed);
+  },
+});
 const moduleResourceUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
@@ -473,6 +495,25 @@ router.post(
     const baseUrl = (process.env.SITE_URL || process.env.API_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/uploads/files/${req.file.filename}` : `/uploads/files/${req.file.filename}`;
     return res.status(200).json({ message: 'Course note PDF uploaded.', url });
+  }
+);
+
+router.post(
+  '/upload/catalogue-deliverable',
+  verifyAdmin,
+  deliverableUpload.single('file'),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded. Use field name "file" (PDF, ZIP, EPUB, DOC).' });
+    }
+    if (req.file.size === 0) {
+      return res.status(400).json({ error: 'Uploaded file is empty' });
+    }
+    return res.status(200).json({
+      message: 'Deliverable uploaded.',
+      storedName: req.file.filename,
+      originalName: req.file.originalname,
+    });
   }
 );
 
