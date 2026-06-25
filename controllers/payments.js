@@ -21,6 +21,11 @@ const {
   mapDeliveryMeta,
 } = require('../utils/delivery');
 
+const { getPublicClientOrigin } = require('../utils/publicClientOrigin');
+
+const FLUTTERWAVE_PAYMENTS_URL = 'https://api.flutterwave.com/v3/payments';
+const MIN_PAYMENT_AMOUNT_NGN = 100;
+
 const mapPackage = (row) => ({
   id: row.id,
   slug: row.slug,
@@ -30,6 +35,189 @@ const mapPackage = (row) => ({
   paymentType: row.payment_type || 'full',
   ...mapDeliveryMeta(row),
 });
+
+const buildPaymentMeta = ({ orderId, userId, serviceSlug, serviceName, paymentType }) => {
+  const meta = {
+    orderId: String(orderId),
+    serviceSlug: String(serviceSlug || ''),
+    serviceName: String(serviceName || ''),
+    paymentType: String(paymentType || 'full'),
+  };
+  if (userId) meta.userId = String(userId);
+  return meta;
+};
+
+const resolvePaymentRedirectUrl = (callbackUrl = '') => {
+  const configuredOrigin = getPublicClientOrigin();
+  if (configuredOrigin) {
+    return `${configuredOrigin}/payment/success`;
+  }
+  const trimmed = String(callbackUrl || '').trim();
+  return trimmed || '';
+};
+
+const isValidFlutterwaveHostedLink = (link = '') =>
+  typeof link === 'string' &&
+  /^https:\/\/checkout\.flutterwave\.com\/v3\/hosted\/pay\/.+/i.test(link.trim());
+
+const extractFlutterwaveError = (error) => {
+  const data = error?.response?.data;
+  if (!data) return error?.message || 'Payment provider error';
+  if (typeof data.message === 'string') return data.message;
+  return JSON.stringify(data);
+};
+
+const initializePayment = async (req, res) => {
+  const userId = req.user?.id || null;
+  const { serviceSlug, email, customerName, callbackUrl } = req.body;
+
+  if (!serviceSlug || !email || !customerName) {
+    return res.status(400).json({
+      error: 'serviceSlug, email, and customerName are required.',
+    });
+  }
+
+  const redirectUrl = resolvePaymentRedirectUrl(callbackUrl);
+  if (!redirectUrl) {
+    return res.status(500).json({
+      error: 'Payment redirect URL is not configured. Set LOCAL_CLIENT_APP or REMOTE_CLIENT_APP in server .env.',
+    });
+  }
+
+  if (!config.flutterwave_secret_key) {
+    return res.status(500).json({ error: 'Payment is not configured on server.' });
+  }
+
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const normalizedName = String(customerName).trim();
+
+  try {
+    const [rows] = await db.query(
+      `SELECT *
+       FROM catalogues
+       WHERE slug = ? AND is_payment_enabled = 1 AND is_published = 1
+       LIMIT 1`,
+      [serviceSlug]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Service package not found.' });
+    }
+
+    const pkg = mapPackage(rows[0]);
+    const amount = Number(pkg.amount);
+
+    if (!Number.isFinite(amount) || amount < MIN_PAYMENT_AMOUNT_NGN) {
+      return res.status(400).json({
+        error: `Invalid product price. Minimum charge is ${MIN_PAYMENT_AMOUNT_NGN} ${pkg.currency || 'NGN'}.`,
+      });
+    }
+
+    const txRef = `LASGLOW-${pkg.slug}-${Date.now()}`;
+
+    const [orderResult] = await db.query(
+      `INSERT INTO service_orders
+      (user_id, catalogue_id, service_slug, service_name, customer_name, email, amount, currency, payment_type, status, tx_ref)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        pkg.id,
+        pkg.slug,
+        pkg.name,
+        normalizedName,
+        normalizedEmail,
+        amount,
+        pkg.currency,
+        pkg.paymentType,
+        'initiated',
+        txRef,
+      ]
+    );
+    const orderId = orderResult.insertId;
+
+    const payload = {
+      tx_ref: txRef,
+      amount,
+      currency: pkg.currency || 'NGN',
+      redirect_url: redirectUrl,
+      payment_options: 'card,ussd,banktransfer',
+      customer: {
+        email: normalizedEmail,
+        name: normalizedName,
+      },
+      customizations: {
+        title: 'Lasglowtech',
+        description: `${pkg.name} (${pkg.paymentType})`,
+      },
+      meta: buildPaymentMeta({
+        orderId,
+        userId,
+        serviceSlug: pkg.slug,
+        serviceName: pkg.name,
+        paymentType: pkg.paymentType,
+      }),
+    };
+
+    const response = await axios.post(FLUTTERWAVE_PAYMENTS_URL, payload, {
+      headers: {
+        Authorization: `Bearer ${config.flutterwave_secret_key}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const flutterwaveBody = response.data || {};
+    const paymentLink = flutterwaveBody?.data?.link || '';
+
+    if (flutterwaveBody.status !== 'success' || !isValidFlutterwaveHostedLink(paymentLink)) {
+      console.error('Flutterwave invalid hosted link:', flutterwaveBody);
+      await db.query('UPDATE service_orders SET status = ? WHERE id = ?', ['failed', orderId]);
+      return res.status(502).json({
+        error:
+          flutterwaveBody?.message ||
+          'Flutterwave did not return a valid checkout link. Check your Flutterwave keys and redirect URL settings.',
+      });
+    }
+
+    await db.query('UPDATE service_orders SET payment_link = ?, status = ? WHERE id = ?', [
+      paymentLink,
+      'pending',
+      orderId,
+    ]);
+
+    try {
+      const adminEmail = await getAdminEmail();
+      await sendOrderInitiatedEmails({
+        adminEmail,
+        customerEmail: normalizedEmail,
+        order: {
+          serviceName: pkg.name,
+          customerName: normalizedName,
+          email: normalizedEmail,
+          amount,
+          currency: pkg.currency,
+          txRef,
+          paymentLink,
+        },
+      });
+    } catch (mailError) {
+      console.error('Order initiated email error:', mailError.message);
+    }
+
+    return res.status(200).json({
+      message: 'Payment initialized successfully.',
+      data: { link: paymentLink },
+      package: pkg,
+      txRef,
+      orderId,
+      redirectUrl,
+    });
+  } catch (error) {
+    console.error('Flutterwave initialize error:', error.response?.data || error.message);
+    return res.status(500).json({
+      error: extractFlutterwaveError(error) || 'Unable to initialize payment right now.',
+    });
+  }
+};
 
 const getPackages = async (req, res) => {
   try {
@@ -63,124 +251,6 @@ const getPackageBySlug = async (req, res) => {
     return res.status(200).json(mapPackage(rows[0]));
   } catch (error) {
     return res.status(500).json({ error: error.message });
-  }
-};
-
-const initializePayment = async (req, res) => {
-  const userId = req.user?.id || null;
-  const { serviceSlug, email, customerName, callbackUrl } = req.body;
-
-  if (!serviceSlug || !email || !customerName || !callbackUrl) {
-    return res.status(400).json({
-      error: 'serviceSlug, email, customerName and callbackUrl are required.',
-    });
-  }
-
-  if (!config.flutterwave_secret_key) {
-    return res.status(500).json({ error: 'Payment is not configured on server.' });
-  }
-
-  try {
-    const [rows] = await db.query(
-      `SELECT *
-       FROM catalogues
-       WHERE slug = ? AND is_payment_enabled = 1 AND is_published = 1
-       LIMIT 1`,
-      [serviceSlug]
-    );
-
-    if (!rows.length) {
-      return res.status(404).json({ error: 'Service package not found.' });
-    }
-
-    const pkg = mapPackage(rows[0]);
-    const txRef = `LASGLOW-${pkg.slug}-${Date.now()}`;
-
-    const [orderResult] = await db.query(
-      `INSERT INTO service_orders
-      (user_id, catalogue_id, service_slug, service_name, customer_name, email, amount, currency, payment_type, status, tx_ref)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        pkg.id,
-        pkg.slug,
-        pkg.name,
-        customerName,
-        email,
-        pkg.amount,
-        pkg.currency,
-        pkg.paymentType,
-        'initiated',
-        txRef,
-      ]
-    );
-    const orderId = orderResult.insertId;
-
-    const payload = {
-      tx_ref: txRef,
-      amount: pkg.amount,
-      currency: pkg.currency,
-      redirect_url: callbackUrl,
-      customer: {
-        email,
-        name: customerName,
-      },
-      customizations: {
-        title: 'Lasglowtech Services Payment',
-        description: `${pkg.name} (${pkg.paymentType})`,
-      },
-      meta: {
-        orderId,
-        userId,
-        serviceSlug: pkg.slug,
-        serviceName: pkg.name,
-        paymentType: pkg.paymentType,
-      },
-    };
-
-    const response = await axios.post('https://api.flutterwave.com/v3/payments', payload, {
-      headers: {
-        Authorization: `Bearer ${config.flutterwave_secret_key}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const paymentLink = response.data?.data?.link || '';
-    await db.query('UPDATE service_orders SET payment_link = ?, status = ? WHERE id = ?', [
-      paymentLink,
-      'pending',
-      orderId,
-    ]);
-
-    try {
-      const adminEmail = await getAdminEmail();
-      await sendOrderInitiatedEmails({
-        adminEmail,
-        customerEmail: email,
-        order: {
-          serviceName: pkg.name,
-          customerName,
-          email,
-          amount: pkg.amount,
-          currency: pkg.currency,
-          txRef,
-          paymentLink,
-        },
-      });
-    } catch (mailError) {
-      console.error('Order initiated email error:', mailError.message);
-    }
-
-    return res.status(200).json({
-      message: 'Payment initialized successfully.',
-      data: response.data.data,
-      package: pkg,
-      txRef,
-      orderId,
-    });
-  } catch (error) {
-    console.error('Flutterwave initialize error:', error.response?.data || error.message);
-    return res.status(500).json({ error: 'Unable to initialize payment right now.' });
   }
 };
 
