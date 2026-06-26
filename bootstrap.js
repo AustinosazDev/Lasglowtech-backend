@@ -123,6 +123,47 @@ const ensureTables = async () => {
   await ensureColumn('service_orders', 'catalogue_id', 'catalogue_id INT NULL');
 
   await db.query(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      title VARCHAR(200) NOT NULL,
+      description TEXT,
+      category VARCHAR(100) NOT NULL DEFAULT 'Websites',
+      image_url VARCHAR(400),
+      external_link VARCHAR(500),
+      sort_order INT NOT NULL DEFAULT 0,
+      is_featured TINYINT(1) NOT NULL DEFAULT 0,
+      is_published TINYINT(1) NOT NULL DEFAULT 1,
+      is_case_study TINYINT(1) NOT NULL DEFAULT 0,
+      summary TEXT,
+      challenge TEXT,
+      solution TEXT,
+      result TEXT,
+      cta_label VARCHAR(80) DEFAULT 'View project',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Allow custom project categories (migrate away from fixed ENUM if needed).
+  try {
+    const [categoryCol] = await db.query(
+      `SELECT COLUMN_TYPE AS columnType
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'projects'
+         AND column_name = 'category'
+       LIMIT 1`
+    );
+    if (String(categoryCol[0]?.columnType || '').toLowerCase().startsWith('enum')) {
+      await db.query(
+        `ALTER TABLE projects MODIFY category VARCHAR(100) NOT NULL DEFAULT 'Websites'`
+      );
+    }
+  } catch (_) {
+    // Non-fatal — table may not exist yet on first partial bootstrap.
+  }
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS payment_transactions (
       id INT AUTO_INCREMENT PRIMARY KEY,
       order_id INT NULL,
@@ -388,6 +429,65 @@ const ensureTables = async () => {
       unsubscribed_at TIMESTAMP NULL DEFAULT NULL
     )
   `);
+
+  const [projectCountRows] = await db.query('SELECT COUNT(*) AS total FROM projects');
+  if ((projectCountRows[0]?.total || 0) === 0) {
+    const { gridProjects, caseStudies, publicImagePath } = require('./data/projectSeed');
+
+    for (const item of gridProjects) {
+      await db.query(
+        `INSERT INTO projects
+        (title, description, category, image_url, external_link, sort_order, is_featured, is_published, is_case_study)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+        [
+          item.title,
+          item.description,
+          item.category,
+          publicImagePath(item.imageFile),
+          item.externalLink,
+          item.sortOrder,
+          item.isFeatured ? 1 : 0,
+        ]
+      );
+    }
+
+    for (const study of caseStudies) {
+      await db.query(
+        `INSERT INTO projects
+        (title, category, summary, challenge, solution, result, image_url, external_link, cta_label, sort_order, is_published, is_case_study)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)`,
+        [
+          study.title,
+          study.category,
+          study.summary,
+          study.challenge,
+          study.solution,
+          study.result,
+          publicImagePath(study.imageFile),
+          study.externalLink,
+          study.ctaLabel,
+          study.sortOrder,
+        ]
+      );
+    }
+  }
+
+  // Backfill image paths for projects seeded before images were added.
+  try {
+    const { gridProjects, caseStudies, publicImagePath } = require('./data/projectSeed');
+    const allSeed = [...gridProjects, ...caseStudies];
+    for (const item of allSeed) {
+      const imagePath = publicImagePath(item.imageFile);
+      if (!imagePath) continue;
+      await db.query(
+        `UPDATE projects SET image_url = ?
+         WHERE title = ? AND (image_url IS NULL OR TRIM(image_url) = '')`,
+        [imagePath, item.title]
+      );
+    }
+  } catch (_) {
+    // Non-fatal if seed data file is unavailable.
+  }
 
   const [countRows] = await db.query('SELECT COUNT(*) AS total FROM catalogues');
   if ((countRows[0]?.total || 0) === 0) {

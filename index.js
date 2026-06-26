@@ -26,6 +26,7 @@ const catalogueRoutes = require('./routes/catalogues.js');
 const adminRoutes = require('./routes/admin.js');
 const careerRoutes = require('./routes/careers.js');
 const lmsRoutes = require('./routes/lms.js');
+const projectRoutes = require('./routes/projects.js');
 
 
 
@@ -110,6 +111,7 @@ app.use('/catalogues', catalogueRoutes);
 app.use('/admin', adminRoutes);
 app.use('/careers', careerRoutes);
 app.use('/lms', lmsRoutes);
+app.use('/projects', projectRoutes);
 
 
 // health check endpoint
