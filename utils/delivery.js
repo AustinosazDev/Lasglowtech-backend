@@ -53,6 +53,10 @@ const mapDeliveryMeta = (catalogueRow = {}) => {
     hasInstantDownload: hasUploadedFile,
     hasExternalDelivery: hasExternalLink,
     deliverableFileName: catalogueRow.deliverable_file_name || '',
+    assetFormat: catalogueRow.asset_format || '',
+    licenseNote: catalogueRow.license_note || '',
+    licenseTier: catalogueRow.license_tier || '',
+    linkedCourseSlug: catalogueRow.linked_course_slug || '',
   };
 };
 

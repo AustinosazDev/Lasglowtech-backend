@@ -33,6 +33,10 @@ const mapPackage = (row) => ({
   amount: Number(row.price),
   currency: row.currency || 'NGN',
   paymentType: row.payment_type || 'full',
+  assetFormat: row.asset_format || '',
+  licenseNote: row.license_note || '',
+  licenseTier: row.license_tier || '',
+  linkedCourseSlug: row.linked_course_slug || '',
   ...mapDeliveryMeta(row),
 });
 
@@ -499,6 +503,15 @@ const persistVerification = async (verificationData) => {
 const verifyPayment = async (req, res) => {
   const { reference: txRef } = req.params;
   const transactionId = req.query?.transaction_id;
+  const authenticatedUser = req.user; // Will be null if not authenticated
+
+  console.log('VERIFY PAYMENT DEBUG START:', { 
+    txRef, 
+    transactionId, 
+    authenticatedUser: authenticatedUser ? { id: authenticatedUser.id, email: authenticatedUser.email } : null,
+    authHeader: req.headers.authorization ? 'Present' : 'Missing'
+  });
+
   if (!txRef) {
     return res.status(400).json({ error: 'txRef is required.' });
   }
@@ -508,6 +521,54 @@ const verifyPayment = async (req, res) => {
   }
 
   try {
+    // First, get the order details to check ownership before verifying with Flutterwave
+    const [[order]] = await db.query(
+      `SELECT id, user_id, email, customer_name, service_name, status
+       FROM service_orders
+       WHERE tx_ref = ?
+       LIMIT 1`,
+      [txRef]
+    );
+
+    console.log('ORDER DEBUG:', order);
+
+    if (!order) {
+      console.log('ORDER NOT FOUND for txRef:', txRef);
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    // If user is authenticated, verify they own this order
+    if (authenticatedUser) {
+      const userEmail = authenticatedUser.email?.toLowerCase();
+      const orderEmail = order.email?.toLowerCase();
+      const userId = authenticatedUser.id;
+      const orderUserId = order.user_id;
+
+      console.log('ACCESS CHECK DEBUG:', { 
+        userEmail, 
+        orderEmail, 
+        userId, 
+        orderUserId,
+        emailMatch: userEmail === orderEmail,
+        userIdMatch: userId === orderUserId,
+        user_id_type: typeof userId,
+        order_user_id_type: typeof orderUserId
+      });
+
+      // User must match by email OR by user_id
+      const hasAccess = (userEmail && userEmail === orderEmail) || (userId && userId === orderUserId);
+      
+      console.log('ACCESS RESULT:', hasAccess);
+      
+      if (!hasAccess) {
+        console.log('ACCESS DENIED for user:', authenticatedUser.email, 'order:', order.email);
+        return res.status(403).json({ 
+          error: 'You do not have permission to view this transaction. Please sign in with the email address used for this purchase.',
+          requiresAuth: true 
+        });
+      }
+    }
+
     let response = null;
 
     if (transactionId) {
@@ -713,7 +774,8 @@ const getAdminPayments = async (req, res) => {
 
 const getMyOrders = async (req, res) => {
   const userId = req.user?.id;
-  if (!userId) {
+  const userEmail = req.user?.email;
+  if (!userId || !userEmail) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -724,9 +786,9 @@ const getMyOrders = async (req, res) => {
               c.delivery_type, c.deliverable_file_url, c.deliverable_file_name, c.deliverable_external_url
        FROM service_orders o
        LEFT JOIN catalogues c ON c.id = o.catalogue_id
-       WHERE o.user_id = ?
+       WHERE o.user_id = ? OR (o.user_id IS NULL AND o.email = ?)
        ORDER BY o.id DESC`,
-      [userId]
+      [userId, userEmail]
     );
     return res.status(200).json(
       rows.map((row) => ({
@@ -751,8 +813,9 @@ const getMyOrders = async (req, res) => {
 
 const getMyOrderInvoice = async (req, res) => {
   const userId = req.user?.id;
+  const userEmail = req.user?.email;
   const { orderId } = req.params;
-  if (!userId || !orderId) {
+  if (!userId || !userEmail || !orderId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -760,9 +823,9 @@ const getMyOrderInvoice = async (req, res) => {
     const [[order]] = await db.query(
       `SELECT id, customer_name, email, service_name, amount, currency, tx_ref, paid_at, status, invoice_number
        FROM service_orders
-       WHERE id = ? AND user_id = ?
+       WHERE id = ? AND (user_id = ? OR (user_id IS NULL AND email = ?))
        LIMIT 1`,
-      [orderId, userId]
+      [orderId, userId, userEmail]
     );
     if (!order) {
       return res.status(404).json({ error: 'Order not found.' });
@@ -861,8 +924,9 @@ const downloadDeliverable = async (req, res) => {
 
 const getMyOrderDelivery = async (req, res) => {
   const userId = req.user?.id;
+  const userEmail = req.user?.email;
   const { orderId } = req.params;
-  if (!userId || !orderId) {
+  if (!userId || !userEmail || !orderId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -871,9 +935,9 @@ const getMyOrderDelivery = async (req, res) => {
       `SELECT o.id, o.service_name, o.status, o.download_token, c.delivery_type, c.deliverable_file_url, c.deliverable_file_name, c.deliverable_external_url
        FROM service_orders o
        LEFT JOIN catalogues c ON c.id = o.catalogue_id
-       WHERE o.id = ? AND o.user_id = ?
+       WHERE o.id = ? AND (o.user_id = ? OR (o.user_id IS NULL AND o.email = ?))
        LIMIT 1`,
-      [orderId, userId]
+      [orderId, userId, userEmail]
     );
 
     if (!row) {
@@ -889,9 +953,9 @@ const getMyOrderDelivery = async (req, res) => {
         `SELECT o.id, o.service_name, o.status, o.download_token, c.delivery_type, c.deliverable_file_url, c.deliverable_file_name, c.deliverable_external_url
          FROM service_orders o
          LEFT JOIN catalogues c ON c.id = o.catalogue_id
-         WHERE o.id = ? AND o.user_id = ?
+         WHERE o.id = ? AND (o.user_id = ? OR (o.user_id IS NULL AND o.email = ?))
          LIMIT 1`,
-        [orderId, userId]
+        [orderId, userId, userEmail]
       );
       return res.status(200).json(buildDeliveryPayload(updated, updated));
     }

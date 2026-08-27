@@ -118,6 +118,10 @@ const ensureTables = async () => {
   await ensureColumn('catalogues', 'deliverable_file_url', 'deliverable_file_url VARCHAR(500) NULL');
   await ensureColumn('catalogues', 'deliverable_file_name', 'deliverable_file_name VARCHAR(255) NULL');
   await ensureColumn('catalogues', 'deliverable_external_url', 'deliverable_external_url VARCHAR(500) NULL');
+  await ensureColumn('catalogues', 'asset_format', 'asset_format VARCHAR(50) NULL');
+  await ensureColumn('catalogues', 'license_note', 'license_note VARCHAR(500) NULL');
+  await ensureColumn('catalogues', 'license_tier', "license_tier ENUM('personal','commercial','extended') NULL");
+  await ensureColumn('catalogues', 'linked_course_slug', 'linked_course_slug VARCHAR(240) NULL');
   await ensureColumn('service_orders', 'download_token', 'download_token VARCHAR(64) NULL');
   await ensureColumn('service_orders', 'delivered_at', 'delivered_at DATETIME NULL');
   await ensureColumn('service_orders', 'catalogue_id', 'catalogue_id INT NULL');
@@ -399,13 +403,133 @@ const ensureTables = async () => {
   await db.query(`
     CREATE TABLE IF NOT EXISTS posts (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      cover VARCHAR(255) NOT NULL,
+      thumbnail VARCHAR(255) NOT NULL,
       title VARCHAR(255) NOT NULL,
+      slug VARCHAR(255) NOT NULL UNIQUE,
+      excerpt VARCHAR(200) DEFAULT NULL,
       content TEXT NOT NULL,
-      shares INT DEFAULT 0,
-      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      slug VARCHAR(255) DEFAULT NULL
+      category ENUM("Design", "Web & Mobile Development", "Latest Tech Trends", "Branding & Marketing", "Business & Startups", "Case Studies", "Company News") DEFAULT "Company News",
+      status ENUM("draft", "published") DEFAULT "draft",
+      author_name VARCHAR(100) DEFAULT NULL,
+      author_avatar VARCHAR(255) DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      published_at TIMESTAMP NULL DEFAULT NULL,
+      view_count INT DEFAULT 0,
+      likes_count INT DEFAULT 0,
+      comments_count INT DEFAULT 0,
+      shares INT DEFAULT 0
     )
+  `);
+
+  // Ensure blog schema columns exist (for backwards compatibility)
+  await ensureColumn('posts', 'excerpt', 'excerpt VARCHAR(200) DEFAULT NULL AFTER title');
+  await ensureColumn('posts', 'category', 'category ENUM("Design", "Web & Mobile Development", "Latest Tech Trends", "Branding & Marketing", "Business & Startups", "Case Studies", "Company News") DEFAULT "Company News" AFTER excerpt');
+  await ensureColumn('posts', 'status', 'status ENUM("draft", "published") DEFAULT "draft" AFTER category');
+  await ensureColumn('posts', 'author_name', 'author_name VARCHAR(100) DEFAULT NULL AFTER status');
+  await ensureColumn('posts', 'author_avatar', 'author_avatar VARCHAR(255) DEFAULT NULL AFTER author_name');
+  await ensureColumn('posts', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+  await ensureColumn('posts', 'updated_at', 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at');
+  await ensureColumn('posts', 'published_at', 'published_at TIMESTAMP NULL DEFAULT NULL AFTER updated_at');
+  await ensureColumn('posts', 'view_count', 'view_count INT DEFAULT 0 AFTER published_at');
+  await ensureColumn('posts', 'likes_count', 'likes_count INT DEFAULT 0 AFTER view_count');
+  await ensureColumn('posts', 'comments_count', 'comments_count INT DEFAULT 0 AFTER likes_count');
+  
+  // Rename cover to thumbnail if needed
+  try {
+    const [coverCol] = await db.query(
+      `SELECT COLUMN_NAME FROM information_schema.columns 
+       WHERE table_schema = DATABASE() AND table_name = 'posts' AND column_name = 'cover'`
+    );
+    if (coverCol.length > 0) {
+      await db.query('ALTER TABLE posts CHANGE COLUMN cover thumbnail VARCHAR(255) NOT NULL');
+    }
+  } catch (_) {}
+
+  // Make slug unique and required
+  try {
+    await db.query('ALTER TABLE posts MODIFY COLUMN slug VARCHAR(255) NOT NULL UNIQUE');
+  } catch (_) {}
+
+  // Set existing posts to published status if they don't have a status
+  await db.query('UPDATE posts SET status = "published" WHERE status IS NULL OR status = ""');
+
+  // Create blog likes table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS blog_likes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      post_id INT NOT NULL,
+      user_id INT DEFAULT NULL,
+      anonymous_fingerprint VARCHAR(255) DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE KEY unique_like (post_id, user_id, anonymous_fingerprint)
+    )
+  `);
+
+  // Create blog comments table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS blog_comments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      post_id INT NOT NULL,
+      author_name VARCHAR(100) NOT NULL,
+      author_email VARCHAR(150) NOT NULL,
+      content TEXT NOT NULL,
+      status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Create newsletter subscribers table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      active TINYINT(1) DEFAULT 1,
+      subscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      unsubscribed_at TIMESTAMP NULL DEFAULT NULL
+    )
+  `);
+  await ensureColumn('newsletter_subscribers', 'unsubscribe_token', 'unsubscribe_token VARCHAR(64) NULL UNIQUE');
+  await db.query(`UPDATE newsletter_subscribers SET unsubscribe_token = REPLACE(UUID(), '-', '') WHERE unsubscribe_token IS NULL OR unsubscribe_token = ''`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS newsletters (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      subject VARCHAR(255) NOT NULL,
+      content LONGTEXT NOT NULL,
+      recipient_emails TEXT NULL,
+      status ENUM('draft', 'scheduled', 'sending', 'sent', 'failed') DEFAULT 'draft',
+      scheduled_at DATETIME NULL,
+      sent_at DATETIME NULL,
+      created_by INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      recipient_count INT DEFAULT 0,
+      open_count INT DEFAULT 0,
+      click_count INT DEFAULT 0,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+  await ensureColumn('newsletters', 'recipient_emails', 'recipient_emails TEXT NULL');
+
+  // Create indexes for better performance
+  try {
+    await db.query('CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status)');
+    await db.query('CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category)');
+    await db.query('CREATE INDEX IF NOT EXISTS idx_posts_published_at ON posts(published_at)');
+    await db.query('CREATE INDEX IF NOT EXISTS idx_posts_view_count ON posts(view_count)');
+    await db.query('CREATE INDEX IF NOT EXISTS idx_blog_comments_post_id ON blog_comments(post_id)');
+    await db.query('CREATE INDEX IF NOT EXISTS idx_blog_comments_status ON blog_comments(status)');
+    await db.query('CREATE INDEX IF NOT EXISTS idx_blog_likes_post_id ON blog_likes(post_id)');
+  } catch (_) {}
+
+  // Update existing posts to have default excerpt from content
+  await db.query(`
+    UPDATE posts 
+    SET excerpt = SUBSTRING(REPLACE(content, '<[^>]+>', ''), 1, 200)
+    WHERE excerpt IS NULL OR excerpt = ''
   `);
 
   await db.query(`
@@ -493,12 +617,12 @@ const ensureTables = async () => {
   if ((countRows[0]?.total || 0) === 0) {
     await db.query(
       `INSERT INTO catalogues
-      (title, slug, summary, description, image_url, price, payment_type, currency, is_payment_enabled, is_published, sort_order)
+      (title, slug, summary, description, image_url, price, payment_type, currency, is_payment_enabled, is_published, sort_order, package_tier, is_popular, features_json, delivery_type, deliverable_file_url, deliverable_file_name, deliverable_external_url, asset_format, license_note, license_tier, linked_course_slug)
       VALUES
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         'Web Development',
         'web-development',
@@ -511,6 +635,17 @@ const ensureTables = async () => {
         1,
         1,
         1,
+        'standard',
+        0,
+        '[]',
+        'service',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
         'Mobile Development',
         'mobile-apps',
         'Cross-platform mobile apps with stable architecture and polished UI.',
@@ -522,6 +657,17 @@ const ensureTables = async () => {
         1,
         1,
         2,
+        'standard',
+        0,
+        '[]',
+        'service',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
         'UI/UX Design',
         'ui-ux-design',
         'Research-backed interface design and product prototypes.',
@@ -533,6 +679,17 @@ const ensureTables = async () => {
         1,
         1,
         3,
+        'standard',
+        0,
+        '[]',
+        'service',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
         'Graphic Design',
         'graphic-design',
         'Brand visuals and campaign assets that stand out in crowded markets.',
@@ -544,6 +701,17 @@ const ensureTables = async () => {
         1,
         1,
         4,
+        'standard',
+        0,
+        '[]',
+        'service',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
       ]
     );
   }

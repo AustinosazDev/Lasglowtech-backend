@@ -17,6 +17,9 @@ const { ensureTables } = require('./bootstrap');
 const fileUpload = require('./middlewares/upload'); // for /upload/files route
 
 const postRoutes = require('./routes/posts.js');
+const blogRoutes = require('./routes/blog.js');
+const newsletterRoutes = require('./routes/newsletters.js');
+const { processScheduledNewsletters } = require('./controllers/newsletters');
 
 const contactRoutes = require('./routes/contacts.js');
 const subscribRoutes = require('./routes/subscribe.js');
@@ -102,6 +105,8 @@ app.post(
 
 // 8️⃣ API routes
 app.use('/posts', postRoutes);
+app.use('/blog', blogRoutes);
+app.use('/', newsletterRoutes);
 
 app.use('/subscribe', subscribRoutes);
 app.use('/contacts', contactRoutes);
@@ -154,4 +159,5 @@ ensureTables()
   })
   .finally(() => {
     startServer();
+    setInterval(() => processScheduledNewsletters().catch((error) => console.error('Scheduled newsletter check failed:', error.message)), 60 * 1000);
   });

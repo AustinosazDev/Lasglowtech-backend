@@ -21,7 +21,7 @@ const router = express.Router();
 router.get('/packages', getPackages);
 router.get('/packages/:serviceSlug', getPackageBySlug);
 router.post('/initialize', optionalVerifyToken, initializePayment);
-router.get('/verify/:reference', verifyPayment);
+router.get('/verify/:reference', optionalVerifyToken, verifyPayment);
 router.post('/webhook', webhook);
 router.get('/admin/revenue', verifyAdmin, getAdminRevenueStats);
 router.get('/admin/orders', verifyAdmin, getAdminPayments);

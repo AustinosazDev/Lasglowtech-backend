@@ -59,6 +59,10 @@ const mapCatalogue = (row, { includeDeliverableDetails = false } = {}) => {
     hasInstantDownload: delivery.hasInstantDownload,
     hasExternalDelivery: delivery.hasExternalDelivery,
     deliverableFileName: delivery.deliverableFileName,
+    assetFormat: row.asset_format || '',
+    licenseNote: row.license_note || '',
+    licenseTier: row.license_tier || '',
+    linkedCourseSlug: row.linked_course_slug || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -153,6 +157,10 @@ const createCatalogue = async (req, res) => {
     deliverableFileUrl,
     deliverableFileName,
     deliverableExternalUrl,
+    assetFormat,
+    licenseNote,
+    licenseTier,
+    linkedCourseSlug,
   } = req.body;
 
   if (!title || !summary) {
@@ -170,8 +178,8 @@ const createCatalogue = async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO catalogues
       (title, slug, summary, description, image_url, price, package_tier, is_popular, features_json, payment_type, currency, is_payment_enabled, is_published, sort_order,
-       delivery_type, deliverable_file_url, deliverable_file_name, deliverable_external_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       delivery_type, deliverable_file_url, deliverable_file_name, deliverable_external_url, asset_format, license_note, license_tier, linked_course_slug)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title,
         slug,
@@ -191,6 +199,10 @@ const createCatalogue = async (req, res) => {
         deliverableFileUrl || '',
         deliverableFileName || '',
         deliverableExternalUrl || '',
+        assetFormat || '',
+        licenseNote || '',
+        licenseTier || '',
+        linkedCourseSlug || '',
       ]
     );
 
@@ -220,6 +232,10 @@ const updateCatalogue = async (req, res) => {
     deliverableFileUrl,
     deliverableFileName,
     deliverableExternalUrl,
+    assetFormat,
+    licenseNote,
+    licenseTier,
+    linkedCourseSlug,
   } = req.body;
 
   if (!title || !summary) {
@@ -238,7 +254,7 @@ const updateCatalogue = async (req, res) => {
       `UPDATE catalogues
        SET title = ?, slug = ?, summary = ?, description = ?, image_url = ?, price = ?, package_tier = ?, is_popular = ?, features_json = ?, payment_type = ?,
            currency = ?, is_payment_enabled = ?, is_published = ?, sort_order = ?,
-           delivery_type = ?, deliverable_file_url = ?, deliverable_file_name = ?, deliverable_external_url = ?
+           delivery_type = ?, deliverable_file_url = ?, deliverable_file_name = ?, deliverable_external_url = ?, asset_format = ?, license_note = ?, license_tier = ?, linked_course_slug = ?
        WHERE id = ?`,
       [
         title,
@@ -259,6 +275,10 @@ const updateCatalogue = async (req, res) => {
         deliverableFileUrl || '',
         deliverableFileName || '',
         deliverableExternalUrl || '',
+        assetFormat || '',
+        licenseNote || '',
+        licenseTier || '',
+        linkedCourseSlug || '',
         id,
       ]
     );
