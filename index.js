@@ -127,7 +127,8 @@ app.get('/api/health', (req, res) => {
 // 9️⃣ Start the server with graceful shutdown (production / PM2)
 let server;
 function startServer() {
-  const host = process.env.HOST || '0.0.0.0';
+  // Render/other PaaS require binding to 0.0.0.0; ignore HOST=localhost.
+  const host = process.env.HOST && process.env.HOST !== 'localhost' ? process.env.HOST : '0.0.0.0';
   server = app.listen(port, host, () => {
     console.log(`Server listening on ${host}:${port} (dev: ${isDev})`);
   });
@@ -154,10 +155,10 @@ ensureTables()
     console.log('Database tables ensured!');
   })
   .catch((error) => {
-    console.error('Bootstrap failed:', error.message);
+    console.error('Bootstrap failed:', error && (error.stack || error.message || error));
     // Do NOT exit, just continue
   })
   .finally(() => {
     startServer();
-    setInterval(() => processScheduledNewsletters().catch((error) => console.error('Scheduled newsletter check failed:', error.message)), 60 * 1000);
+    setInterval(() => processScheduledNewsletters().catch((error) => console.error('Scheduled newsletter check failed:', error && (error.stack || error.message || error))), 60 * 1000);
   });
