@@ -37,10 +37,29 @@ flutterwave_webhook_hash: process.env.FLUTTERWAVE_WEBHOOK_HASH,
 
 
     allowedDomains: (process.env.NODE_ENV === 'production' ?
-        [
+        [...new Set([
+            ...(process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()),
             process.env.REMOTE_CLIENT_APP,
-            process.env.REMOTE_SERVER_API, // allow browser access to API URL)
-        ].filter(Boolean) :
+            process.env.REMOTE_SERVER_API, // allow browser access to API URL
+        ].filter(Boolean).flatMap((origin) => {
+            try {
+                const parsed = new URL(origin);
+                const hostname = parsed.hostname;
+                const variants = [origin];
+                if (hostname.startsWith('www.')) {
+                    parsed.hostname = hostname.slice(4);
+                    variants.push(parsed.origin);
+                } else if (!hostname.includes('.') || hostname === 'localhost') {
+                    return variants;
+                } else {
+                    parsed.hostname = `www.${hostname}`;
+                    variants.push(parsed.origin);
+                }
+                return variants;
+            } catch {
+                return [origin];
+            }
+        }))] :
         [
             process.env.LOCAL_CLIENT_APP,
             process.env.LOCAL_SERVER_API,
