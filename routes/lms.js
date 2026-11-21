@@ -27,12 +27,14 @@ const {
   adminBatchIssueCertificates,
   adminDeleteEnrollment,
   verifyCertificatePublic,
+  getCertificateAssets,
 } = require('../controllers/lms');
 const { verifyAdmin, verifyToken } = require('../middlewares/auth');
 
 const router = express.Router();
 
 router.get('/certificates/verify', verifyCertificatePublic);
+router.get('/certificate-assets', getCertificateAssets);
 
 router.get('/courses', getPublishedCourses);
 router.get('/courses/by-slug/:slug', getCourseBySlug);

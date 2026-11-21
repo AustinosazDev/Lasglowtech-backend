@@ -8,6 +8,7 @@ const config = require('../config');
 const db = require('../db');
 const { verifyAdmin } = require('../middlewares/auth');
 const { sendBulkEmail } = require('../utils/notifications');
+const { isEnabled: cloudinaryEnabled, uploadBuffer: cloudinaryUpload } = require('../utils/cloudinary');
 
 const router = express.Router();
 const upload = multer({
@@ -118,6 +119,31 @@ const moduleResourceUpload = multer({
 });
 
 const jwtSecret = config.secret || process.env.JWT_SECRET || 'lasglowtech-dev-secret';
+
+// Persist a Cloudinary URL for a certificate asset (falls back silently if table/column missing).
+const saveCertificateAssetUrl = async (column, url) => {
+  try {
+    await db.query(
+      `INSERT INTO certificate_settings (id, ${column}) VALUES (1, ?)
+       ON DUPLICATE KEY UPDATE ${column} = VALUES(${column})`,
+      [url]
+    );
+  } catch (err) {
+    console.error('Failed to save certificate asset URL:', err.message);
+  }
+};
+
+// Try Cloudinary first; returns URL or null. Keeps local disk copy as fallback.
+const tryCloudinaryImage = async (filePath) => {
+  if (!cloudinaryEnabled || !filePath) return null;
+  try {
+    const buffer = fs.readFileSync(filePath);
+    return await cloudinaryUpload(buffer, { folder: 'lasglowtech/certificates', resourceType: 'image' });
+  } catch (err) {
+    console.error('Cloudinary certificate upload failed:', err.message);
+    return null;
+  }
+};
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -417,9 +443,20 @@ router.post(
   '/upload/certificate-background',
   verifyAdmin,
   certificateBgUpload.single('file'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded. Use field name "file" and PNG or JPEG.' });
+    }
+    if (cloudinaryEnabled) {
+      try {
+        const cUrl = await tryCloudinaryImage(req.file.path);
+        if (cUrl) {
+          await saveCertificateAssetUrl('certificate_bg_url', cUrl);
+          return res.status(200).json({ message: 'Certificate asset updated.', url: cUrl });
+        }
+      } catch (e) {
+        console.error('Certificate Cloudinary upload error:', e.message);
+      }
     }
     const baseUrl = (process.env.API_URL || process.env.SITE_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/uploads/certificate-bg.png` : '/uploads/certificate-bg.png';
@@ -434,9 +471,20 @@ router.post(
   '/upload/certificate-logo',
   verifyAdmin,
   certificateLogoUpload.single('file'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded. Use field name "file" and PNG or JPEG.' });
+    }
+    if (cloudinaryEnabled) {
+      try {
+        const cUrl = await tryCloudinaryImage(req.file.path);
+        if (cUrl) {
+          await saveCertificateAssetUrl('certificate_logo_url', cUrl);
+          return res.status(200).json({ message: 'Certificate asset updated.', url: cUrl });
+        }
+      } catch (e) {
+        console.error('Certificate Cloudinary upload error:', e.message);
+      }
     }
     const baseUrl = (process.env.SITE_URL || process.env.API_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/uploads/certificate-logo.png` : '/uploads/certificate-logo.png';
@@ -451,9 +499,20 @@ router.post(
   '/upload/certificate-seal',
   verifyAdmin,
   certificateSealUpload.single('file'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded. Use field name "file" and PNG, JPEG, or WEBP.' });
+    }
+    if (cloudinaryEnabled) {
+      try {
+        const cUrl = await tryCloudinaryImage(req.file.path);
+        if (cUrl) {
+          await saveCertificateAssetUrl('certificate_seal_url', cUrl);
+          return res.status(200).json({ message: 'Certificate asset updated.', url: cUrl });
+        }
+      } catch (e) {
+        console.error('Certificate Cloudinary upload error:', e.message);
+      }
     }
     const baseUrl = (process.env.API_URL || process.env.SITE_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/uploads/certificate-seal.png` : '/uploads/certificate-seal.png';
@@ -468,9 +527,20 @@ router.post(
   '/upload/certificate-signature',
   verifyAdmin,
   certificateSignatureUpload.single('file'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded. Use field name "file" and PNG, JPEG, or WEBP.' });
+    }
+    if (cloudinaryEnabled) {
+      try {
+        const cUrl = await tryCloudinaryImage(req.file.path);
+        if (cUrl) {
+          await saveCertificateAssetUrl('certificate_signature_url', cUrl);
+          return res.status(200).json({ message: 'Certificate asset updated.', url: cUrl });
+        }
+      } catch (e) {
+        console.error('Certificate Cloudinary upload error:', e.message);
+      }
     }
     const baseUrl = (process.env.API_URL || process.env.SITE_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/uploads/certificate-signature.png` : '/uploads/certificate-signature.png';
@@ -485,12 +555,22 @@ router.post(
   '/upload/module-resource',
   verifyAdmin,
   moduleResourceUpload.single('file'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded. Use field name "file" and a PDF.' });
     }
     if (req.file.size === 0) {
       return res.status(400).json({ error: 'Uploaded file is empty' });
+    }
+        if (cloudinaryEnabled) {
+      try {
+        const buffer = fs.readFileSync(req.file.path);
+        const cUrl = await cloudinaryUpload(buffer, { folder: 'lasglowtech/files', resourceType: 'raw' });
+        fs.unlink(req.file.path, () => {});
+        return res.status(200).json({ message: 'Course note PDF uploaded.', url: cUrl });
+      } catch (e) {
+        console.error('Cloudinary module-resource upload failed:', e.message);
+      }
     }
     const baseUrl = (process.env.SITE_URL || process.env.API_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/uploads/files/${req.file.filename}` : `/uploads/files/${req.file.filename}`;
@@ -502,13 +582,35 @@ router.post(
   '/upload/catalogue-deliverable',
   verifyAdmin,
   deliverableUpload.single('file'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded. Use field name "file" (PDF, ZIP, EPUB, DOC).' });
     }
     if (req.file.size === 0) {
       return res.status(400).json({ error: 'Uploaded file is empty' });
     }
+
+    // Cloudinary authenticated (private) delivery: file is only reachable via
+    // the signed URL we store; the token-gated download endpoint redirects to it.
+    if (cloudinaryEnabled) {
+      try {
+        const buffer = fs.readFileSync(req.file.path);
+        const cUrl = await cloudinaryUpload(buffer, {
+          folder: 'lasglowtech/deliverables',
+          resourceType: 'raw',
+          deliveryType: 'authenticated',
+        });
+        fs.unlink(req.file.path, () => {});
+        return res.status(200).json({
+          message: 'Deliverable uploaded.',
+          storedName: cUrl,
+          originalName: req.file.originalname,
+        });
+      } catch (e) {
+        console.error('Cloudinary deliverable upload failed:', e.message);
+      }
+    }
+
     return res.status(200).json({
       message: 'Deliverable uploaded.',
       storedName: req.file.filename,

@@ -11,6 +11,7 @@ const {
   sendDigitalFileDeliveryEmail,
 } = require('../utils/notifications');
 const { buildInvoiceHtml } = require('../utils/documents');
+const { htmlToPdfBuffer } = require('../utils/certificatePdf');
 const { getAdminEmail } = require('../utils/admin');
 const {
   generateDownloadToken,
@@ -851,9 +852,18 @@ const getMyOrderInvoice = async (req, res) => {
       await db.query('UPDATE service_orders SET invoice_number = ? WHERE id = ?', [invoiceNumber, order.id]);
     }
 
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${invoiceNumber}.html"`);
-    return res.status(200).send(html);
+    // Prefer a real PDF download; fall back to HTML if Chromium/Puppeteer is unavailable.
+    try {
+      const pdfBuffer = await htmlToPdfBuffer(html, { format: 'A4', landscape: false });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${invoiceNumber}.pdf"`);
+      return res.status(200).send(pdfBuffer);
+    } catch (pdfErr) {
+      console.error('Invoice PDF generation failed, sending HTML fallback:', pdfErr.message);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${invoiceNumber}.html"`);
+      return res.status(200).send(html);
+    }
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -907,6 +917,11 @@ const downloadDeliverable = async (req, res) => {
 
     if (row.delivery_type !== 'digital_file' || !row.deliverable_file_url) {
       return res.status(400).json({ error: 'This order does not include a hosted file download.' });
+    }
+
+    // Cloudinary-hosted deliverables are stored as signed URLs; redirect to them.
+    if (/^https?:\/\//i.test(row.deliverable_file_url)) {
+      return res.redirect(row.deliverable_file_url);
     }
 
     const filePath = getStoredFilePath(row.deliverable_file_url);

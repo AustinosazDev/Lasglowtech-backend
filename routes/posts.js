@@ -7,6 +7,7 @@ const {
   updatePost,
   addPost
 } = require('../controllers/posts');
+const { verifyAdmin } = require('../middlewares/auth');
 
 const router = express.Router();
 
@@ -19,12 +20,12 @@ router.get('/:slug', getPostBySlug);
 router.get('/id/:id', getPost);
 
 //  Add a new post
-router.post('/', addPost);
+router.post('/', verifyAdmin, addPost);
 
 // Update post
-router.put('/:id', updatePost);
+router.put('/:id', verifyAdmin, updatePost);
 
 // Delete post
-router.delete('/:id', deletePost);
+router.delete('/:id', verifyAdmin, deletePost);
 
 module.exports = router;

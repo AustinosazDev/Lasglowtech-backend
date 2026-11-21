@@ -399,6 +399,10 @@ const ensureTables = async () => {
     )
   `).catch(() => {});
   await db.query(`INSERT IGNORE INTO certificate_settings (id, default_signature_label) VALUES (1, 'Authorized Signatory')`).catch(() => {});
+  await ensureColumn('certificate_settings', 'certificate_bg_url', 'certificate_bg_url VARCHAR(500) NULL');
+  await ensureColumn('certificate_settings', 'certificate_logo_url', 'certificate_logo_url VARCHAR(500) NULL');
+  await ensureColumn('certificate_settings', 'certificate_seal_url', 'certificate_seal_url VARCHAR(500) NULL');
+  await ensureColumn('certificate_settings', 'certificate_signature_url', 'certificate_signature_url VARCHAR(500) NULL');
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS posts (

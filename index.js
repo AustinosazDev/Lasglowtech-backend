@@ -15,6 +15,7 @@ const fs = require('fs');
 const config = require('./config');
 const { ensureTables } = require('./bootstrap');
 const fileUpload = require('./middlewares/upload'); // for /upload/files route
+const { isEnabled: cloudinaryEnabled, uploadBuffer: cloudinaryUpload } = require('./utils/cloudinary');
 
 const postRoutes = require('./routes/posts.js');
 const blogRoutes = require('./routes/blog.js');
@@ -25,6 +26,7 @@ const contactRoutes = require('./routes/contacts.js');
 const subscribRoutes = require('./routes/subscribe.js');
 const paymentRoutes = require('./routes/payments.js');
 const userRoutes = require('./routes/users.js');
+const googleAuthRoutes = require('./routes/googleAuth.js');
 const catalogueRoutes = require('./routes/catalogues.js');
 const adminRoutes = require('./routes/admin.js');
 const careerRoutes = require('./routes/careers.js');
@@ -94,10 +96,28 @@ const imageUpload = multer({
 app.post(
   '/upload/images',
   imageUpload.single('file'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
+
+    // When Cloudinary is configured, push the file to the CDN and return its
+    // public URL. Otherwise keep the legacy local-disk filename behaviour.
+    if (cloudinaryEnabled) {
+      try {
+        const buffer = fs.readFileSync(req.file.path);
+        const url = await cloudinaryUpload(buffer, {
+          folder: 'lasglowtech/images',
+          resourceType: 'image',
+        });
+        fs.unlink(req.file.path, () => {});
+        return res.status(200).json(url);
+      } catch (err) {
+        console.error('Cloudinary upload failed:', err);
+        return res.status(500).json({ error: 'Image upload failed' });
+      }
+    }
+
     res.status(200).json(req.file.filename);
   }
 );
@@ -112,6 +132,7 @@ app.use('/subscribe', subscribRoutes);
 app.use('/contacts', contactRoutes);
 app.use('/payments', paymentRoutes);
 app.use('/users', userRoutes);
+app.use('/auth/google', googleAuthRoutes);
 app.use('/catalogues', catalogueRoutes);
 app.use('/admin', adminRoutes);
 app.use('/careers', careerRoutes);
@@ -119,9 +140,15 @@ app.use('/lms', lmsRoutes);
 app.use('/projects', projectRoutes);
 
 
-// health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).send('OK');
+// health check endpoint (includes DB connectivity check)
+app.get('/api/health', async (req, res) => {
+  try {
+    const db = require('./db');
+    await db.query('SELECT 1');
+    res.status(200).json({ status: 'ok', db: 'up' });
+  } catch (err) {
+    res.status(503).json({ status: 'error', db: 'down', message: err.message });
+  }
 });
 
 // 9️⃣ Start the server with graceful shutdown (production / PM2)

@@ -6,6 +6,7 @@ const localServerApi = process.env.LOCAL_SERVER_API || `http://localhost:${confi
 
 // Helper to build full cover URL
 const buildCoverUrl = (filename) => {
+  if (/^https?:\/\//i.test(filename)) return filename;
   const isLocal = process.env.NODE_ENV !== 'production';
   return isLocal
     ? `${localServerApi}/uploads/images/${filename}`
@@ -25,7 +26,7 @@ const slugify = (text) =>
 const getPosts = async (req, res) => {
   try {
     const [data] = await db.query(
-      "SELECT id, cover, title, slug, content, shares, timestamp FROM posts ORDER BY id DESC"
+      "SELECT id, thumbnail AS cover, title, slug, content, shares, timestamp FROM posts ORDER BY id DESC"
     );
     const posts = data.map(post => ({
       ...post,
@@ -41,7 +42,7 @@ const getPosts = async (req, res) => {
 const getPost = async (req, res) => {
   try {
     const [data] = await db.query(
-      "SELECT id, cover, title, slug, content, shares, timestamp FROM posts WHERE id = ?",
+      "SELECT id, thumbnail AS cover, title, slug, content, shares, timestamp FROM posts WHERE id = ?",
       [req.params.id]
     );
     if (!data.length) return res.status(404).json({ message: "Post not found" });
@@ -58,7 +59,7 @@ const getPost = async (req, res) => {
 const getPostBySlug = async (req, res) => {
   try {
     const [data] = await db.query(
-      "SELECT id, cover, title, slug, content, shares, timestamp FROM posts WHERE slug = ?",
+      "SELECT id, thumbnail AS cover, title, slug, content, shares, timestamp FROM posts WHERE slug = ?",
       [req.params.slug]
     );
     if (!data.length) return res.status(404).json({ message: "Post not found" });
@@ -73,16 +74,17 @@ const getPostBySlug = async (req, res) => {
 
 // ADD a new post
 const addPost = async (req, res) => {
-  const { cover, title, content } = req.body;
-  if (!cover || !title || content.trim() === "") {
+  const { cover, thumbnail, title, content } = req.body;
+  const coverValue = cover || thumbnail;
+  if (!coverValue || !title || !content || content.trim() === "") {
     return res.status(400).json({ error: "Cover, title and content are required." });
   }
 
-  const filename = path.basename(cover);
-  const slug = slugify(title);
+  const filename = /^https?:\/\//i.test(coverValue) ? coverValue : path.basename(coverValue);
+  const slug = slugify(title) || `post-${Date.now()}`;
 
-  const q = "INSERT INTO posts (`cover`, `title`, `slug`, `content`, `shares`) VALUES (?)";
-  const values = [filename, title, slug, content, 0];
+  const q = "INSERT INTO posts (`thumbnail`, `title`, `slug`, `content`, `shares`, `status`, `published_at`) VALUES (?, ?, ?, ?, 0, 'published', NOW())";
+  const values = [filename, title, slug, content];
 
   try {
     const [result] = await db.query(q, [values]);
@@ -110,24 +112,31 @@ const deletePost = async (req, res) => {
 // UPDATE a post
 const updatePost = async (req, res) => {
   const postId = req.params.id;
-  const { cover, title, content } = req.body;
+  const { cover, thumbnail, title, content } = req.body;
 
-  if (!title || content.trim() === "") {
+  if (!title || !content || content.trim() === "") {
     return res.status(400).json({ error: "Title and content cannot be empty." });
   }
 
-  const filename = path.basename(cover);
-  const slug = slugify(title);
+  const coverValue = cover || thumbnail;
+  const filename = coverValue
+    ? (/^https?:\/\//i.test(coverValue) ? coverValue : path.basename(coverValue))
+    : null;
+  const slug = slugify(title) || `post-${Date.now()}`;
 
-  const q = "UPDATE posts SET cover = ?, title = ?, slug = ?, content = ? WHERE id = ?";
-  const values = [filename, title, slug, content, postId];
+  const q = filename
+    ? "UPDATE posts SET thumbnail = ?, title = ?, slug = ?, content = ? WHERE id = ?"
+    : "UPDATE posts SET title = ?, slug = ?, content = ? WHERE id = ?";
+  const values = filename
+    ? [filename, title, slug, content, postId]
+    : [title, slug, content, postId];
 
   try {
     await db.query(q, values);
     res.status(200).json({
       message: "Post updated successfully",
       slug,
-      coverUrl: buildCoverUrl(filename)
+      coverUrl: filename ? buildCoverUrl(filename) : null
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -48,12 +48,44 @@ const getCertificateSealUrl = () => getUploadCertificateAssetUrl('certificate-se
 
 const getCertificateSignatureUrl = () => getUploadCertificateAssetUrl('certificate-signature.png');
 
-const certificateAssetUrls = () => ({
-  certificateLogoUrl: getCertificateLogoUrl(),
-  certificateBackgroundUrl: getCertificateBackgroundUrl(),
-  sealUrl: getCertificateSealUrl(),
-  signatureImageUrl: getCertificateSignatureUrl(),
-});
+const getCertificateSettingsAssetUrls = async () => {
+  try {
+    const [[row]] = await db.query(
+      'SELECT certificate_bg_url, certificate_logo_url, certificate_seal_url, certificate_signature_url FROM certificate_settings WHERE id = 1 LIMIT 1'
+    );
+    return row || {};
+  } catch (_) {
+    return {};
+  }
+};
+
+// Cloudinary URLs saved in certificate_settings take priority; local disk URLs are the fallback.
+const certificateAssetUrls = async () => {
+  const s = await getCertificateSettingsAssetUrls();
+  const envBg = process.env.CERTIFICATE_BACKGROUND_URL
+    ? process.env.CERTIFICATE_BACKGROUND_URL.replace(/\/$/, '')
+    : '';
+  return {
+    certificateLogoUrl: s.certificate_logo_url || getCertificateLogoUrl(),
+    certificateBackgroundUrl: envBg || s.certificate_bg_url || getCertificateBackgroundUrl(),
+    sealUrl: s.certificate_seal_url || getCertificateSealUrl(),
+    signatureImageUrl: s.certificate_signature_url || getCertificateSignatureUrl(),
+  };
+};
+
+const getCertificateAssets = async (req, res) => {
+  try {
+    const urls = await certificateAssetUrls();
+    return res.status(200).json({
+      logoUrl: urls.certificateLogoUrl,
+      backgroundUrl: urls.certificateBackgroundUrl,
+      sealUrl: urls.sealUrl,
+      signatureImageUrl: urls.signatureImageUrl,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
 
 const getCertificateVerifyUrlForCode = (certificateCode) => {
   const base = getPublicClientOrigin();
@@ -474,7 +506,7 @@ const updateModuleProgress = async (req, res) => {
         learnerName: enrollment.learner_name || 'Learner',
         courseTitle: enrollment.course_title || 'Course',
         completionDate: new Date(),
-        ...certificateAssetUrls(),
+        ...(await certificateAssetUrls()),
       });
       try {
         await sendCourseCertificateEmail({
@@ -518,7 +550,7 @@ const getMyCertificate = async (req, res) => {
       bodyMessage: payload.bodyMessage,
       signedDate: payload.signedDate,
       signatureLabel: payload.signatureLabel,
-      ...certificateAssetUrls(),
+      ...(await certificateAssetUrls()),
     });
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -1164,7 +1196,7 @@ const adminPreviewCertificate = async (req, res) => {
       bodyMessage: row.certificate_message != null ? row.certificate_message : '',
       signedDate: row.certificate_signed_at || null,
       signatureLabel: row.certificate_signature_label || 'Authorized Signatory',
-      ...certificateAssetUrls(),
+      ...(await certificateAssetUrls()),
     });
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -1219,7 +1251,7 @@ const issueCertificateForEnrollment = async ({
     bodyMessage: certMessage || '',
     signedDate: certSignedAt,
     signatureLabel: certSigLabel || 'Authorized Signatory',
-    ...certificateAssetUrls(),
+    ...(await certificateAssetUrls()),
   });
 
   try {
@@ -1391,4 +1423,5 @@ module.exports = {
   adminBatchIssueCertificates,
   adminDeleteEnrollment,
   verifyCertificatePublic,
+  getCertificateAssets,
 };
